@@ -62,10 +62,7 @@ pip install -r requirements.txt
 
 ### 4. 启动应用
 ```bash
-# 使用启动脚本（推荐）
-./start_web_app.sh
-
-# 或python运行启动
+# python运行启动
 python3 start_web_app.py
 ```
 
