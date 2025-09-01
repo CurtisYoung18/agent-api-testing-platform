@@ -137,7 +137,6 @@ python cli_tools/run_test.py --all -d 0
 3. **端口已占用**: 使用 `streamlit run app.py --server.port 8502` 更换端口
 
 ### 获取帮助
-- 查看 [README.md](README.md) 获取详细使用说明
 - 查看 [UI_CUSTOMIZATION_GUIDE.md](UI_CUSTOMIZATION_GUIDE.md) 了解界面定制
 
 
