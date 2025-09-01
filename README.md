@@ -11,32 +11,9 @@ AI Agent API 测试与评估工具，支持命令行和Web界面两种使用方�
 - 📋 **详细报告**: 生成包含统计分析的详细测试报告
 - 🚀 **多种部署**: 支持命令行和Web应用两种使用方式
 
-## 项目结构
 
-```
-测试平台/
-├── app.py                       # Web应用主程序
-├── start_web_app.py            # Web应用启动脚本（Python版）
-├── start_web_app.sh            # Web应用启动脚本（Shell版）
-├── requirements.txt            # Python依赖包
-├── README.md                   # 项目说明文档
-├── UI_CUSTOMIZATION_GUIDE.md   # UI界面定制指南
-├── tools/                      # 工具模块
-│   ├── config.py              # 配置文件（API配置函数）
-│   ├── excel/                 # Excel处理模块
-│   │   ├── excel_reader.py    # Excel文件读取
-│   │   └── excel_output.py    # Excel结果导出
-│   └── api/                   # API调用模块
-│       └── api_client.py      # API客户端
-├── cli_tools/                  # 命令行工具
-│   ├── test_agent.py          # 命令行测试脚本
-│   └── run_test.py            # 简化的命令行测试脚本
-├── data/                       # 数据文件
-│   └── 测试集模板.xlsx         # 测试数据文件模板
-└── venv/                       # 虚拟环境
-```
 
-# 🚀 快速部署指南
+## 🚀 快速部署指南
 
 
 ### 1. 克隆项目
@@ -111,44 +88,6 @@ python3 start_web_app.py
    python -c "from tools.config import API_KEYS_BY_ENDPOINT; print('✅ 配置成功！')"
    ```
 
-### 🔑 获取API Keys
-- **CN节点**: [GPTBots中国站](https://api.gptbots.cn)
-- **SG节点**: [GPTBots新加坡站](https://api-sg.gptbots.ai)  
-- **TH节点**: [GPTBots泰国站](https://api-th.gptbots.ai)
-
-### 💡 配置提示
-- `.env` 文件不会被Git提交，保护您的密钥安全
-- 每个开发者都需要创建自己的 `.env` 文件
-- 在Web界面中也可以临时输入不同的API Key
-
-## 📋 测试数据
-
-项目包含一个测试集模板：
-- `data/测试集模板.xlsx` - 原始模板（回波医疗测试）
-
-
-## 🎯 功能特性
-
-### Web界面功能
-- ✅ 多节点支持 (CN/SG/TH)
-- ✅ 实时测试进度
-- ✅ 历史问题概览（可展开查看完整回答）
-- ✅ 问题间隔控制 (0-30秒)
-- ✅ 参考答案对比
-- ✅ 多格式报告导出 (Excel/Markdown/JSON)
-
-### 命令行工具
-```bash
-# 测试3个问题（默认）
-python cli_tools/run_test.py
-
-# 测试10个问题，间隔1秒
-python cli_tools/run_test.py -n 10 -d 1.0
-
-# 测试所有问题，无间隔
-python cli_tools/run_test.py --all -d 0
-```
-
 ## 📝 配置说明
 
 项目使用 `.env` 文件进行配置管理。所有配置项都可以在 `.env` 文件中修改：
@@ -168,6 +107,31 @@ python cli_tools/run_test.py --all -d 0
 如需修改更多配置，请查看 `tools/config.py` 文件中的详细选项。所有配置都支持通过环境变量覆盖。
 
 
+### 💡 配置提示
+- `.env` 文件不会被Git提交，保护您的密钥安全
+- 每个开发者都需要创建自己的 `.env` 文件
+- 在Web界面中也可以临时输入不同的API Key
+
+
+## 📋 测试数据
+项目包含一个测试集模板：
+- `data/测试集模板.xlsx` - 原始模板（回波医疗测试）
+
+
+### 命令行工具
+```bash
+# 测试3个问题（默认）
+python cli_tools/run_test.py
+
+# 测试10个问题，间隔1秒
+python cli_tools/run_test.py -n 10 -d 1.0
+
+# 测试所有问题，无间隔
+python cli_tools/run_test.py --all -d 0
+```
+
+
+
 ## ⚠️ 注意事项
 
 1. **端口占用**: 默认使用8501端口，如被占用可修改启动命令
@@ -183,9 +147,21 @@ python cli_tools/run_test.py --all -d 0
 3. **配置文件问题**: 确保 `.env` 文件存在且格式正确
 4. **端口已占用**: 使用 `streamlit run app.py --server.port 8502` 更换端口
 
+**问题：ModuleNotFoundError: No module named 'dotenv'**
+```bash
+source venv/bin/activate
+pip install python-dotenv
+```
+
+**问题：API密钥为空**
+- 检查 `.env` 文件是否存在且格式正确
+- 确保API密钥名称与 `.env.example` 中的格式一致
+
+**问题：API调用失败**
+- 验证API密钥是否有效且未过期
+- 检查网络连接和API服务状态
+
 ### 获取帮助
-- 查看 [README.md](README.md) 获取详细使用说明
-- 查看 [SECURITY_UPDATE.md](SECURITY_UPDATE.md) 了解安全配置
 - 查看 [UI_CUSTOMIZATION_GUIDE.md](UI_CUSTOMIZATION_GUIDE.md) 了解界面定制
 
 
@@ -251,20 +227,6 @@ Web界面会自动验证文件格式，确保包含必要的列。命令行工�
 5. **测试数量**: 建议先用少量数据测试，确认API调用正常后再增加测试数量
 6. **API配额**: 注意API使用配额限制，大量测试前请确认账户余额
 
-## 扩展功能
-
-工具设计为模块化结构，便于扩展：
-
-- 添加新的数据源支持（CSV、数据库等）
-- 实现更多API功能（发送消息V2、获取对话历史等）
-- 添加测试报告生成功能
-- 实现并发测试以提高效率
-
-## 故障排查
-
-1. **Excel读取失败**: 检查文件路径和格式是否正确
-2. **API调用失败**: 检查API key和网络连接
-3. **依赖包问题**: 确保所有依赖包已正确安装
 
 ## 更新日志
 
