@@ -36,134 +36,83 @@ AI Agent API 测试与评估工具，支持命令行和Web界面两种使用方�
 └── venv/                       # 虚拟环境
 ```
 
-## 安装依赖
+# 🚀 快速部署指南
 
+
+### 1. 克隆项目
+```bash
+git clone https://github.com/CurtisYoung18/agent-api-testing-platform.git
+cd agent-api-testing-platform
+```
+
+### 2. 创建虚拟环境
+```bash
+# 创建虚拟环境
+python3 -m venv venv
+
+# 激活虚拟环境
+source venv/bin/activate  # macOS/Linux
+# 或 venv\Scripts\activate  # Windows
+```
+
+### 3. 安装依赖
 ```bash
 pip install -r requirements.txt
 ```
 
-## 使用方法
-
-### 🌐 Web界面（推荐）
-
-#### 快速启动
-
-**方式一：使用启动脚本**
+### 4. 启动应用
 ```bash
-# Shell脚本（推荐）
+# 使用启动脚本（推荐）
 ./start_web_app.sh
 
-# 或者Python脚本
-python start_web_app.py
+# 或python运行启动
+python3 start_web_app.py
 ```
 
-**方式二：手动启动**
+### 5. 访问应用
+若未自动弹出web应用，请手动打开浏览器访问：http://localhost:8501
+
+## 🔧 API Keys 配置
+
+### 已预配置的节点
+项目中已包含以下API Keys配置（在 `tools/config.py` 中）：
+
+- **CN节点 (回波医疗)**: `app-FzcBZOLzqPkziAWh****q5Bf`
+- **SG节点 (简单点)**: `app-Npxjw5HUbYkPvzLg****iBLu` 
+- **TH节点**: `app-11pMsg7O1mfafngh****WsBq` (需要更新为有效密钥)
+
+### 如需修改API Keys：
+
+- 编辑 `tools/config.py` 文件中的 `API_KEYS_BY_ENDPOINT` 配置。
+- 在web界面中直接输入并press enter
+
+## 📋 测试数据
+
+项目包含一个测试集模板：
+- `data/测试集模板.xlsx` - 原始模板（回波医疗测试）
+
+
+## 🎯 功能特性
+
+### Web界面功能
+- ✅ 多节点支持 (CN/SG/TH)
+- ✅ 实时测试进度
+- ✅ 历史问题概览（可展开查看完整回答）
+- ✅ 问题间隔控制 (0-30秒)
+- ✅ 参考答案对比
+- ✅ 多格式报告导出 (Excel/Markdown/JSON)
+
+### 命令行工具
 ```bash
-# 激活虚拟环境
-source venv/bin/activate
-
-# 启动Web应用
-streamlit run app.py --server.port 8501
-```
-
-#### Web界面功能
-
-1. **API配置**: 在侧边栏配置API Key和Endpoint
-2. **文件上传**: 上传包含测试问题的Excel文件
-3. **测试控制**: 设置测试参数并启动批量测试
-4. **实时监控**: 查看测试进度和实时结果，**支持实时显示Agent回答**
-5. **结果分析**: 查看详细测试结果和统计分析
-6. **报告导出**: 下载Excel或JSON格式的测试报告
-
-### 🎨 界面定制
-
-Web界面支持完全定制，详细说明请参考：[UI界面定制指南](UI_CUSTOMIZATION_GUIDE.md)
-
-**定制功能包括:**
-- 修改公司信息和Logo
-- 调整颜色主题和样式
-- 自定义布局和组件
-- 添加新功能模块
-
-#### 支持的API Endpoint
-- **cn**: `https://api.gptbots.cn` (中国，默认)
-- **sg**: `https://api-sg.gptbots.ai` (新加坡) 
-- **th**: `https://api-th.gptbots.ai` (泰国)
-- **自定义**: 支持输入任意endpoint名称
-
-> ⚠️ **重要**: 不同的endpoint需要使用不同的API Key。如果SG或TH节点无法创建对话，请参考 [多节点配置指南](MULTI_ENDPOINT_GUIDE.md) 配置正确的API Key。
-
-### 💻 命令行界面
-
-#### 1. 快速开始
-
-使用简化的运行脚本：
-
-```bash
-# 激活虚拟环境
-source venv/bin/activate
-
 # 测试3个问题（默认）
 python cli_tools/run_test.py
 
-# 测试10个问题
-python cli_tools/run_test.py -n 10
+# 测试10个问题，间隔1秒
+python cli_tools/run_test.py -n 10 -d 1.0
 
-# 测试所有问题
-python cli_tools/run_test.py --all
-
-# 设置请求间隔为1秒
-python cli_tools/run_test.py -n 5 -d 1.0
+# 测试所有问题，无间隔
+python cli_tools/run_test.py --all -d 0
 ```
-
-### 2. 基本使用
-
-直接运行主脚本：
-
-```bash
-python cli_tools/test_agent.py
-```
-
-### 3. 测试单独的模块
-
-测试Excel读取功能：
-```bash
-python -c "from tools.excel.excel_reader import ExcelReader; r = ExcelReader(); print(f'找到{len(r.get_questions())}个问题')"
-```
-
-测试API客户端（创建对话和发送消息）：
-```bash
-python -c "from tools.api.api_client import AgentAPIClient; c = AgentAPIClient(); print('对话ID:', c.create_conversation())"
-```
-
-### 4. 自定义测试
-
-在Python中使用：
-
-```python
-from cli_tools.test_agent import AgentTester
-
-# 创建测试器
-tester = AgentTester()
-
-# 运行测试（测试前5个问题）
-results = tester.run_tests(max_questions=5, delay_seconds=1.0)
-
-# 保存结果
-tester.save_results()
-
-# 查看失败的测试
-tester.print_failed_tests()
-```
-
-### 5. 命令行参数说明
-
-`run_test.py` 支持以下参数：
-
-- `-n, --number`: 测试问题数量（默认: 3）
-- `-d, --delay`: 请求间隔时间/秒（默认: 2.0）
-- `--column`: 指定问题列名（默认: 自动检测）
-- `--all`: 测试所有问题
 
 ## 配置说明
 
@@ -175,19 +124,26 @@ tester.print_failed_tests()
 - `DEFAULT_USER_ID`: 默认用户ID
 - `REQUEST_TIMEOUT`: 请求超时时间
 
-## 📋 Excel文件格式
 
-### 标准模板格式
-- **必须包含**: `input` 列（存放测试问题）
-- **可选包含**: `reference_output` 列（期望输出，仅供参考）
-- **支持格式**: `.xlsx` 和 `.xls`
+## ⚠️ 注意事项
 
-### 示例格式
-| input | reference_output |
-|-------|------------------|
-| 设备无法正常开机 | 请检查电源连接... |
-| 探头安装方法 | 按照说明书步骤... |
-| 设备序列号查看 | 在设备背面标签... |
+1. **端口占用**: 默认使用8501端口，如被占用可修改启动命令
+2. **API限流**: 建议设置适当的请求间隔避免触发限流
+3. **文件权限**: 确保启动脚本有执行权限 (`chmod +x start_web_app.sh`)
+4. **Python版本**: 推荐使用Python 3.8+
+
+## 🛟 故障排除
+
+### 常见问题
+1. **模块导入错误**: 确保虚拟环境已激活且依赖已安装
+2. **API认证失败**: 检查对应节点的API Key是否有效
+3. **端口已占用**: 使用 `streamlit run app.py --server.port 8502` 更换端口
+
+### 获取帮助
+- 查看 [README.md](README.md) 获取详细使用说明
+- 查看 [UI_CUSTOMIZATION_GUIDE.md](UI_CUSTOMIZATION_GUIDE.md) 了解界面定制
+
+
 
 ### 兼容性说明
 Web界面会自动验证文件格式，确保包含必要的列。命令行工具会自动检测以下列名：
