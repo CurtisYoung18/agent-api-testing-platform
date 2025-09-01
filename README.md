@@ -60,28 +60,66 @@ source venv/bin/activate  # macOS/Linux
 pip install -r requirements.txt
 ```
 
-### 4. 启动应用
+### 4. 配置API密钥
+```bash
+# 复制配置模板
+cp .env.example .env
+
+# 编辑.env文件，填入您的API密钥
+# API_KEY_CN=your_actual_api_key_here
+# API_KEY_SG=your_actual_api_key_here  
+# API_KEY_TH=your_actual_api_key_here
+```
+
+### 5. 启动应用
 ```bash
 # python运行启动
 python3 start_web_app.py
 ```
 
-### 5. 访问应用
+### 6. 访问应用
 若未自动弹出web应用，请手动打开浏览器访问：http://localhost:8501
 
 ## 🔧 API Keys 配置
 
-### 已预配置的节点
-项目中已包含以下API Keys配置（在 `tools/config.py` 中）：
+### ⚠️ 重要安全说明
+为了保护您的API密钥安全，项目现在使用环境变量进行配置。**请勿在源代码中硬编码API密钥！**
 
-- **CN节点 (回波医疗)**: `app-FzcBZOLzqPkziAWh****q5Bf`
-- **SG节点 (简单点)**: `app-Npxjw5HUbYkPvzLg****iBLu` 
-- **TH节点**: `app-11pMsg7O1mfafngh****WsBq` (需要更新为有效密钥)
+### 🚀 快速配置步骤
 
-### 如需修改API Keys：
+1. **复制配置模板**
+   ```bash
+   cp .env.example .env
+   ```
 
-- 编辑 `tools/config.py` 文件中的 `API_KEYS_BY_ENDPOINT` 配置。
-- 在web界面中直接输入并press enter
+2. **编辑 `.env` 文件**
+   ```bash
+   # 不同节点的API Keys - 请替换为您的真实密钥
+   API_KEY_CN=your_cn_api_key_here
+   API_KEY_SG=your_sg_api_key_here
+   API_KEY_TH=your_th_api_key_here
+   
+   # 其他配置（可选）
+   DEFAULT_ENDPOINT=cn
+   DEFAULT_USER_ID=test_user_001
+   REQUEST_TIMEOUT=60
+   ```
+
+3. **验证配置**
+   ```bash
+   source venv/bin/activate
+   python -c "from tools.config import API_KEYS_BY_ENDPOINT; print('✅ 配置成功！')"
+   ```
+
+### 🔑 获取API Keys
+- **CN节点**: [GPTBots中国站](https://api.gptbots.cn)
+- **SG节点**: [GPTBots新加坡站](https://api-sg.gptbots.ai)  
+- **TH节点**: [GPTBots泰国站](https://api-th.gptbots.ai)
+
+### 💡 配置提示
+- `.env` 文件不会被Git提交，保护您的密钥安全
+- 每个开发者都需要创建自己的 `.env` 文件
+- 在Web界面中也可以临时输入不同的API Key
 
 ## 📋 测试数据
 
@@ -111,15 +149,23 @@ python cli_tools/run_test.py -n 10 -d 1.0
 python cli_tools/run_test.py --all -d 0
 ```
 
-## 配置说明
+## 📝 配置说明
 
-在 `tools/config.py` 中可以修改以下配置：
+项目使用 `.env` 文件进行配置管理。所有配置项都可以在 `.env` 文件中修改：
 
-- `DEFAULT_API_KEY`: Agent API密钥
-- `DEFAULT_ENDPOINT`: 默认API endpoint
-- `EXCEL_FILE_PATH`: Excel文件路径
-- `DEFAULT_USER_ID`: 默认用户ID
-- `REQUEST_TIMEOUT`: 请求超时时间
+### 🔑 API 配置
+- `API_KEY_CN`: 中国节点API密钥
+- `API_KEY_SG`: 新加坡节点API密钥  
+- `API_KEY_TH`: 泰国节点API密钥
+- `DEFAULT_ENDPOINT`: 默认API endpoint (cn/sg/th)
+
+### ⚙️ 应用配置
+- `DEFAULT_USER_ID`: 默认用户ID (默认: test_user_001)
+- `REQUEST_TIMEOUT`: API请求超时时间/秒 (默认: 60)
+- `EXCEL_FILE_PATH`: 默认Excel文件路径
+
+### 🔧 高级配置
+如需修改更多配置，请查看 `tools/config.py` 文件中的详细选项。所有配置都支持通过环境变量覆盖。
 
 
 ## ⚠️ 注意事项
@@ -133,10 +179,13 @@ python cli_tools/run_test.py --all -d 0
 
 ### 常见问题
 1. **模块导入错误**: 确保虚拟环境已激活且依赖已安装
-2. **API认证失败**: 检查对应节点的API Key是否有效
-3. **端口已占用**: 使用 `streamlit run app.py --server.port 8502` 更换端口
+2. **API认证失败**: 检查 `.env` 文件中的API Key是否正确且有效
+3. **配置文件问题**: 确保 `.env` 文件存在且格式正确
+4. **端口已占用**: 使用 `streamlit run app.py --server.port 8502` 更换端口
 
 ### 获取帮助
+- 查看 [README.md](README.md) 获取详细使用说明
+- 查看 [SECURITY_UPDATE.md](SECURITY_UPDATE.md) 了解安全配置
 - 查看 [UI_CUSTOMIZATION_GUIDE.md](UI_CUSTOMIZATION_GUIDE.md) 了解界面定制
 
 
