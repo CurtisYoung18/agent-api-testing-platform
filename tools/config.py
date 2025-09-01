@@ -1,14 +1,20 @@
 """配置文件"""
 
-# 默认API配置
-DEFAULT_ENDPOINT = "cn"  # 默认endpoint
-DEFAULT_API_KEY = "app-11pMsg7O1mfafnghacH9WsBq"  # CN节点的API Key
+import os
+from dotenv import load_dotenv
 
-# 不同节点的API Keys
+# 加载环境变量
+load_dotenv()
+
+# 默认API配置（从环境变量读取，提供默认值作为备用）
+DEFAULT_ENDPOINT = os.getenv("DEFAULT_ENDPOINT", "cn")
+DEFAULT_API_KEY = os.getenv("API_KEY_TH", "")  # 使用TH作为默认备用
+
+# 不同节点的API Keys（从环境变量读取）
 API_KEYS_BY_ENDPOINT = {
-    "cn": "app-FzcBZOLzqPkziAWhC57Aq5Bf", # 默认是回波医疗的api
-    "sg": "app-Npxjw5HUbYkPvzLgfNVTiBLu",  # 默认是简单点的api
-    "th": "app-11pMsg7O1mfafnghacH9WsBq"   # 需要替换为TH节点的API Key
+    "cn": os.getenv("API_KEY_CN", ""),  # 回波医疗
+    "sg": os.getenv("API_KEY_SG", ""),  # 简单点
+    "th": os.getenv("API_KEY_TH", "")   # 泰国节点
 }
 
 API_NAME_BY_ENDPOINT = {
@@ -43,9 +49,9 @@ def get_headers(api_key: str) -> dict:
     }
 
 # Excel 文件配置
-EXCEL_FILE_PATH = "data/测试集模板.xlsx"
+EXCEL_FILE_PATH = os.getenv("EXCEL_FILE_PATH", "data/测试集模板.xlsx")
 SHEET_NAME = None  # None表示使用第一个sheet
 
 # 其他配置
-REQUEST_TIMEOUT = 60  # 请求超时时间（秒）
-DEFAULT_USER_ID = "test_user_001"  # 默认用户ID
+REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "60"))  # 请求超时时间（秒）
+DEFAULT_USER_ID = os.getenv("DEFAULT_USER_ID", "test_user_001")  # 默认用户ID
