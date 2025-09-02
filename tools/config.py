@@ -8,19 +8,19 @@ load_dotenv()
 
 # 默认API配置（从环境变量读取，提供默认值作为备用）
 DEFAULT_ENDPOINT = os.getenv("DEFAULT_ENDPOINT", "cn")
-DEFAULT_API_KEY = os.getenv("API_KEY_TH", "")  # 使用TH作为默认备用
+DEFAULT_API_KEY = os.getenv("API_KEY_SG", "")  # 使用TH作为默认备用
 
 # 不同节点的API Keys（从环境变量读取）
 API_KEYS_BY_ENDPOINT = {
-    "cn": os.getenv("API_KEY_CN", ""),  # 回波医疗
-    "sg": os.getenv("API_KEY_SG", ""),  # 简单点
-    "th": os.getenv("API_KEY_TH", "")   # 泰国节点
+    "cn": os.getenv("API_KEY_CN", ""),  
+    "sg": os.getenv("API_KEY_SG", ""),  
+    "th": os.getenv("API_KEY_TH", "")   
 }
 
 API_NAME_BY_ENDPOINT = {
-    "cn": "回波医疗",
-    "sg": "简单点",
-    "th": "泰国"
+    "cn": os.getenv("API_NAME_CN", "未填写"),
+    "sg": os.getenv("API_NAME_SG", "未填写"),
+    "th": os.getenv("API_NAME_TH", "未填写")
 }
 
 # API地址格式化函数
