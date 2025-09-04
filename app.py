@@ -204,26 +204,14 @@ def main():
                 
                 # 显示问题预览
                 with st.expander(f"👀 问题预览 ({len(questions)} 个问题)", expanded=False):
-                    # 添加显示控制选项
-                    show_all = st.checkbox("显示全部问题", value=False, key="show_all_questions")
-                    
-                    if show_all:
+                    # 使用容器创建滚动区域
+                    with st.container(height=1500):
                         st.info(f"显示全部 {len(questions)} 个问题：")
                         for i, q in enumerate(questions, 1):
                             st.write(f"**{i}. 问题:** {q}")
                             if i <= len(reference_outputs) and reference_outputs[i-1].strip():
                                 st.write(f"**参考答案:** {reference_outputs[i-1]}")
                             st.write("---")
-                    else:
-                        st.info("显示前 5 个问题：")
-                        for i, q in enumerate(questions[:5], 1):
-                            st.write(f"**{i}. 问题:** {q}")
-                            if i <= len(reference_outputs) and reference_outputs[i-1].strip():
-                                st.write(f"**参考答案:** {reference_outputs[i-1]}")
-                            st.write("---")
-                        if len(questions) > 5:
-                            st.write(f"... 还有 {len(questions) - 5} 个问题")
-                            st.caption("☝️ 勾选上方'显示全部问题'查看完整列表")
                 
                 # 存储到session state
                 st.session_state.uploaded_questions = questions
