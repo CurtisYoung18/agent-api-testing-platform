@@ -1,16 +1,24 @@
 import { ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
-import { BeakerIcon, CpuChipIcon, ClockIcon } from '@heroicons/react/24/outline'
+import { useTranslation } from 'react-i18next'
+import { BeakerIcon, CpuChipIcon, ClockIcon, LanguageIcon } from '@heroicons/react/24/outline'
 
 interface LayoutProps {
   children: ReactNode
 }
 
 export function Layout({ children }: LayoutProps) {
+  const { t, i18n } = useTranslation()
+
+  const toggleLanguage = () => {
+    const newLang = i18n.language === 'zh' ? 'en' : 'zh'
+    i18n.changeLanguage(newLang)
+  }
+
   const navItems = [
-    { to: '/test', label: 'Test', icon: BeakerIcon },
-    { to: '/agents', label: 'Agents', icon: CpuChipIcon },
-    { to: '/history', label: 'History', icon: ClockIcon },
+    { to: '/test', label: t('nav.test'), icon: BeakerIcon },
+    { to: '/agents', label: t('nav.agents'), icon: CpuChipIcon },
+    { to: '/history', label: t('nav.history'), icon: ClockIcon },
   ]
 
   return (
@@ -25,12 +33,12 @@ export function Layout({ children }: LayoutProps) {
                 <BeakerIcon className="w-6 h-6 text-white" />
               </div>
               <span className="text-xl font-semibold text-text-primary">
-                Testing Platform
+                {t('nav.platform')}
               </span>
             </div>
 
             {/* Nav Links */}
-            <div className="flex space-x-1">
+            <div className="flex items-center space-x-1">
               {navItems.map((item) => (
                 <NavLink
                   key={item.to}
@@ -47,6 +55,16 @@ export function Layout({ children }: LayoutProps) {
                   <span className="font-medium">{item.label}</span>
                 </NavLink>
               ))}
+              
+              {/* Language Toggle */}
+              <button
+                onClick={toggleLanguage}
+                className="flex items-center space-x-2 px-3 py-2 rounded-lg text-text-secondary hover:bg-primary-50 hover:text-primary-600 transition-all duration-200"
+                title="Switch Language / 切换语言"
+              >
+                <LanguageIcon className="w-5 h-5" />
+                <span className="text-sm font-medium">{i18n.language === 'zh' ? 'EN' : '中'}</span>
+              </button>
             </div>
           </div>
         </div>
