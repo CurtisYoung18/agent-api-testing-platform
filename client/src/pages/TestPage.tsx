@@ -1,6 +1,5 @@
 import { 
   BeakerIcon, 
-  DocumentArrowUpIcon, 
   FolderOpenIcon,
   MagnifyingGlassIcon,
 } from '@heroicons/react/24/outline'
