@@ -74,10 +74,10 @@ export function TestPage() {
             <label className="block text-sm font-medium text-text-primary mb-2">
               速率限制 (RPM)
             </label>
-            <select className="input-field">
+            <select className="input-field" defaultValue="60">
               <option value="10">10 请求/分钟</option>
               <option value="30">30 请求/分钟</option>
-              <option value="60" selected>60 请求/分钟</option>
+              <option value="60">60 请求/分钟</option>
               <option value="120">120 请求/分钟</option>
             </select>
           </div>
