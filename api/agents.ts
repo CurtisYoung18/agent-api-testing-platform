@@ -1,7 +1,15 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
+// Initialize Prisma Client lazily
+let prisma: any;
+
+async function getPrismaClient() {
+  if (!prisma) {
+    const { PrismaClient } = await import('@prisma/client');
+    prisma = new PrismaClient();
+  }
+  return prisma;
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -13,12 +21,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    const prismaClient = await getPrismaClient();
+
     if (req.method === 'GET') {
-      const agents = await prisma.agent.findMany({
+      const agents = await prismaClient.agent.findMany({
         orderBy: [{ lastUsed: 'desc' }, { name: 'asc' }],
       });
 
-      const maskedAgents = agents.map((agent) => ({
+      const maskedAgents = agents.map((agent: any) => ({
         ...agent,
         apiKey: agent.apiKey.length > 14
           ? `${agent.apiKey.slice(0, 10)}***${agent.apiKey.slice(-4)}`
@@ -39,7 +49,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: '无效的区域' });
       }
 
-      const agent = await prisma.agent.create({
+      const agent = await prismaClient.agent.create({
         data: { name, region, apiKey, status: 'active' },
       });
 
@@ -58,4 +68,3 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 }
-
