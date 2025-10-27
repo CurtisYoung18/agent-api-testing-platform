@@ -1,10 +1,10 @@
-import express from 'express';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-export default function handler(req: express.Request, res: express.Response) {
-  res.status(200).json({ 
+export default function handler(req: VercelRequest, res: VercelResponse) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
-    message: 'API is running on Vercel'
+    message: 'API运行正常'
   });
 }
-

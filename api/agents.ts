@@ -4,21 +4,16 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
-  const { url, method } = req;
-  const path = url?.split('/api')[1] || '/';
-
   try {
-    // GET /api/agents
-    if (path === '/agents' && method === 'GET') {
+    if (req.method === 'GET') {
       const agents = await prisma.agent.findMany({
         orderBy: [{ lastUsed: 'desc' }, { name: 'asc' }],
       });
@@ -33,8 +28,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.json(maskedAgents);
     }
 
-    // POST /api/agents
-    if (path === '/agents' && method === 'POST') {
+    if (req.method === 'POST') {
       const { name, region, apiKey } = req.body;
 
       if (!name || !region || !apiKey) {
@@ -55,56 +49,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // GET /api/history
-    if (path.startsWith('/history') && method === 'GET') {
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 20;
-      const skip = (page - 1) * limit;
-
-      const total = await prisma.testHistory.count();
-      const history = await prisma.testHistory.findMany({
-        orderBy: { testDate: 'desc' },
-        skip,
-        take: limit,
-        include: {
-          agent: {
-            select: { id: true, name: true, region: true },
-          },
-        },
-      });
-
-      return res.json({
-        data: history,
-        pagination: {
-          page,
-          limit,
-          total,
-          totalPages: Math.ceil(total / limit),
-        },
-      });
-    }
-
-    // Health check
-    if (path === '/health' && method === 'GET') {
-      return res.json({ 
-        status: 'ok', 
-        timestamp: new Date().toISOString(),
-        message: 'API运行正常'
-      });
-    }
-
-    // 404
-    return res.status(404).json({ 
-      error: '未找到API端点',
-      path,
-      method 
-    });
-
+    return res.status(405).json({ error: '方法不允许' });
   } catch (error: any) {
-    console.error('API Error:', error);
+    console.error('Agents API Error:', error);
     return res.status(500).json({ 
       error: '服务器错误',
       message: error.message 
     });
   }
 }
+
