@@ -15,7 +15,8 @@
     "db:studio": "cd server && npx prisma studio",
     "db:seed": "cd server && npx prisma db seed",
     "setup": "npm install && cd client && npm install && cd ../server && npm install",
-    "vercel-build": "cd client && npm install && npm run build && cd ../server && npm install && npx prisma generate"
+    "vercel-build": "cd client && npm install && npm run build && cd ../server && npm install && npx prisma generate",
+    "postinstall": "cd server && npx prisma generate"
   },
   "keywords": [
     "agent",
@@ -26,8 +27,13 @@
   ],
   "author": "",
   "license": "MIT",
+  "dependencies": {
+    "@prisma/client": "^6.2.0",
+    "@vercel/node": "^3.2.21"
+  },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "prisma": "^6.2.0"
   }
 }
 

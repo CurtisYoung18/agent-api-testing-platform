@@ -2,5 +2,5 @@
   "version": 2,
   "buildCommand": "cd client && npm install && npm run build",
   "outputDirectory": "client/dist",
-  "installCommand": "npm install && cd server && npm install && npx prisma generate"
+  "installCommand": "npm install && npx prisma generate && cd server && npm install"
 }

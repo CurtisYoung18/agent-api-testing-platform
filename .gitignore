@@ -35,6 +35,7 @@ server/dev.db-journal
 
 # Prisma
 server/prisma/migrations/
+node_modules/.prisma/
 
 # Test coverage
 coverage/
