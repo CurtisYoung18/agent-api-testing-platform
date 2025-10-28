@@ -30,28 +30,14 @@ dist-ssr/
 # Database
 *.db
 *.db-journal
-server/dev.db
-server/dev.db-journal
 
 # Prisma
-server/prisma/migrations/
+prisma/migrations/
 node_modules/.prisma/
 
 # Test coverage
 coverage/
 
 # OS
-.DS_Store
 Thumbs.db
 
-# Python (old files)
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-venv/
-ENV/
-*.egg-info/
-
-# Old Streamlit files (will be removed)
-.streamlit/

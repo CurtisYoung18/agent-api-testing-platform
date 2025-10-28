@@ -2,7 +2,7 @@
   "version": 2,
   "buildCommand": "cd client && npm install && npm run build",
   "outputDirectory": "client/dist",
-  "installCommand": "npm install && npx prisma generate && cd server && npm install",
+  "installCommand": "npm install && npx prisma generate",
   "functions": {
     "api/**/*.ts": {
       "includeFiles": "node_modules/.prisma/client/**"

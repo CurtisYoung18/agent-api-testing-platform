@@ -4,19 +4,12 @@
   "description": "AI Agent API Testing and Evaluation Platform",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
-    "dev:server": "cd server && npm run dev",
-    "dev:client": "cd client && npm run dev",
-    "build": "npm run build:client && npm run build:server",
-    "build:client": "cd client && npm run build",
-    "build:server": "cd server && npm run build",
-    "start": "cd server && npm start",
-    "db:push": "cd server && npx prisma db push",
-    "db:studio": "cd server && npx prisma studio",
-    "db:seed": "cd server && npx prisma db seed",
-    "setup": "npm install && cd client && npm install && cd ../server && npm install",
-    "vercel-build": "cd client && npm install && npm run build && cd ../server && npm install && npx prisma generate",
-    "postinstall": "cd server && npx prisma generate"
+    "dev": "cd client && npm run dev",
+    "build": "cd client && npm run build",
+    "db:push": "npx prisma db push",
+    "db:studio": "npx prisma studio",
+    "setup": "npm install && cd client && npm install",
+    "postinstall": "npx prisma generate"
   },
   "keywords": [
     "agent",
