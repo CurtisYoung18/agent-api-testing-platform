@@ -39,7 +39,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (req.method === 'POST') {
-      const { name, region, apiKey } = req.body;
+      const { name, modelName, region, apiKey } = req.body;
 
       if (!name || !region || !apiKey) {
         return res.status(400).json({ error: '缺少必填字段' });
@@ -50,7 +50,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const agent = await prismaClient.agent.create({
-        data: { name, region, apiKey, status: 'active' },
+        data: { 
+          name, 
+          modelName: modelName || null,
+          region, 
+          apiKey, 
+          status: 'active' 
+        },
       });
 
       return res.status(201).json({

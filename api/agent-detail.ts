@@ -54,10 +54,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // PUT - Update agent
     if (req.method === 'PUT') {
-      const { name, region, apiKey, status } = req.body;
+      const { name, modelName, region, apiKey, status } = req.body;
 
       const updateData: any = {};
       if (name) updateData.name = name;
+      if (modelName !== undefined) updateData.modelName = modelName || null;
       if (region) {
         if (!['SG', 'CN'].includes(region)) {
           return res.status(400).json({ error: '无效的区域' });

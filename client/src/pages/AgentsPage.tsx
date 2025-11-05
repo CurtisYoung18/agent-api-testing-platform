@@ -18,6 +18,7 @@ import {
 interface Agent {
   id: number
   name: string
+  modelName?: string
   region: string
   apiKey: string
   status: string
@@ -32,6 +33,7 @@ export function AgentsPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null)
   const [newAgent, setNewAgent] = useState<CreateAgentInput>({
     name: '',
+    modelName: '',
     region: 'SG',
     apiKey: '',
   })
@@ -55,7 +57,7 @@ export function AgentsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agents'] })
       setIsCreateModalOpen(false)
-      setNewAgent({ name: '', region: 'SG', apiKey: '' })
+      setNewAgent({ name: '', modelName: '', region: 'SG', apiKey: '' })
       setFormError('')
     },
     onError: () => {
@@ -69,7 +71,7 @@ export function AgentsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agents'] })
       setEditingAgent(null)
-      setNewAgent({ name: '', region: 'SG', apiKey: '' })
+      setNewAgent({ name: '', modelName: '', region: 'SG', apiKey: '' })
       setFormError('')
     },
     onError: () => {
@@ -100,6 +102,7 @@ export function AgentsPage() {
     setEditingAgent(agent)
     setNewAgent({
       name: agent.name,
+      modelName: agent.modelName || '',
       region: agent.region as 'SG' | 'CN',
       apiKey: '', // 不显示完整的API Key
     })
@@ -192,14 +195,22 @@ export function AgentsPage() {
                   <div className="flex-1">
                     <div className="flex items-center space-x-3 mb-2">
                       <h3 className="text-lg font-semibold text-text-primary">{agent.name}</h3>
-                      <span className="badge badge-success flex items-center space-x-1">
-                        {getRegionIcon(agent.region)}
-                        <span>{agent.region}</span>
-                      </span>
-                      <span className="badge badge-success flex items-center space-x-1">
-                        <CheckCircleIcon className="w-3 h-3" />
-                        <span>活跃</span>
-                      </span>
+                      <div className="flex items-center space-x-2 mt-2">
+                        <span className="badge badge-primary flex items-center space-x-1">
+                          {getRegionIcon(agent.region)}
+                          <span>{agent.region}</span>
+                        </span>
+                        {agent.modelName && (
+                          <span className="badge badge-secondary flex items-center space-x-1">
+                            <CpuChipIcon className="w-3 h-3" />
+                            <span>{agent.modelName}</span>
+                          </span>
+                        )}
+                        <span className="badge badge-success flex items-center space-x-1">
+                          <CheckCircleIcon className="w-3 h-3" />
+                          <span>活跃</span>
+                        </span>
+                      </div>
                     </div>
                     <p className="text-sm text-text-secondary">API Key: {agent.apiKey}</p>
                     <p className="text-xs text-text-tertiary mt-1">
@@ -312,7 +323,7 @@ export function AgentsPage() {
               if (!createMutation.isPending && !updateMutation.isPending) {
                 setIsCreateModalOpen(false)
                 setEditingAgent(null)
-                setNewAgent({ name: '', region: 'SG', apiKey: '' })
+                setNewAgent({ name: '', modelName: '', region: 'SG', apiKey: '' })
                 setFormError('')
               }
             }}
@@ -333,7 +344,7 @@ export function AgentsPage() {
                   onClick={() => {
                     setIsCreateModalOpen(false)
                     setEditingAgent(null)
-                    setNewAgent({ name: '', region: 'SG', apiKey: '' })
+                    setNewAgent({ name: '', modelName: '', region: 'SG', apiKey: '' })
                     setFormError('')
                   }}
                   className="text-text-tertiary hover:text-text-primary transition-colors"
@@ -375,6 +386,23 @@ export function AgentsPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-text-primary mb-1">
+                    模型名称
+                  </label>
+                  <input
+                    type="text"
+                    value={newAgent.modelName || ''}
+                    onChange={(e) => setNewAgent({ ...newAgent, modelName: e.target.value })}
+                    className="input-field"
+                    placeholder="例如: GPT-4, Claude-3, Gemini-Pro"
+                    disabled={createMutation.isPending || updateMutation.isPending}
+                  />
+                  <p className="text-xs text-text-tertiary mt-1">
+                    用于对比分析时的标识
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-text-primary mb-1">
                     API Key {editingAgent ? '(留空则不修改)' : '*'}
                   </label>
                   <input
@@ -407,7 +435,7 @@ export function AgentsPage() {
                     onClick={() => {
                       setIsCreateModalOpen(false)
                       setEditingAgent(null)
-                      setNewAgent({ name: '', region: 'SG', apiKey: '' })
+                      setNewAgent({ name: '', modelName: '', region: 'SG', apiKey: '' })
                       setFormError('')
                     }}
                     className="btn-outline flex-1"

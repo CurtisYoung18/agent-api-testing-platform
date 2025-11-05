@@ -24,6 +24,9 @@
     "@prisma/client": "^6.2.0",
     "@types/formidable": "^3.4.6",
     "@vercel/node": "^3.2.21",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
     "formidable": "^3.5.4",
     "xlsx": "^0.18.5"
   },

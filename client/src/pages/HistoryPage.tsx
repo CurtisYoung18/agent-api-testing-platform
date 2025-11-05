@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { historyApi, type TestHistory } from '@/lib/api'
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { 
   ClockIcon,
@@ -19,8 +20,10 @@ import {
 
 export function HistoryPage() {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [page, setPage] = useState(1)
   const [selectedRecord, setSelectedRecord] = useState<TestHistory | null>(null)
+  const [selectedForCompare, setSelectedForCompare] = useState<number[]>([])
   
   const { data, isLoading } = useQuery({
     queryKey: ['history', page],
@@ -55,11 +58,54 @@ export function HistoryPage() {
     }
   }
 
+  const toggleSelectForCompare = (id: number) => {
+    setSelectedForCompare(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    )
+  }
+
+  const handleCompare = () => {
+    if (selectedForCompare.length >= 2) {
+      navigate(`/compare?ids=${selectedForCompare.join(',')}`)
+    }
+  }
+
+  const clearSelection = () => {
+    setSelectedForCompare([])
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center space-x-3">
-        <ClockIcon className="w-8 h-8 text-primary-500" />
-        <h1 className="text-3xl font-bold text-text-primary">测试历史</h1>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <ClockIcon className="w-8 h-8 text-primary-500" />
+          <h1 className="text-3xl font-bold text-text-primary">测试历史</h1>
+        </div>
+        {selectedForCompare.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex items-center space-x-3"
+          >
+            <span className="text-sm text-text-secondary">
+              已选择 {selectedForCompare.length} 项
+            </span>
+            <button
+              onClick={clearSelection}
+              className="text-sm text-text-tertiary hover:text-text-primary"
+            >
+              清除
+            </button>
+            <button
+              onClick={handleCompare}
+              disabled={selectedForCompare.length < 2}
+              className="btn-primary flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChartBarIcon className="w-5 h-5" />
+              <span>对比分析 ({selectedForCompare.length})</span>
+            </button>
+          </motion.div>
+        )}
       </div>
 
       {/* Search and Filters */}
@@ -94,7 +140,14 @@ export function HistoryPage() {
           data.data.map((record) => (
             <div key={record.id} className="glass-card p-6 hover:shadow-glass-hover transition-all duration-200">
               <div className="flex items-start justify-between mb-4">
-                <div>
+                <div className="flex items-start space-x-4">
+                  <input
+                    type="checkbox"
+                    checked={selectedForCompare.includes(record.id)}
+                    onChange={() => toggleSelectForCompare(record.id)}
+                    className="mt-1 w-5 h-5 text-primary-500 rounded border-gray-300 focus:ring-primary-500"
+                  />
+                  <div>
                   <p className="text-sm text-text-tertiary">
                     {new Date(record.testDate).toLocaleString('zh-CN')}
                   </p>
@@ -114,6 +167,7 @@ export function HistoryPage() {
                       <ClockIcon className="w-4 h-4" />
                       <span>{Math.floor(record.durationSeconds / 60)}分 {record.durationSeconds % 60}秒</span>
                     </span>
+                  </div>
                   </div>
                 </div>
                 <div className="flex space-x-2">

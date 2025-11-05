@@ -15,6 +15,7 @@ export const api = axios.create({
 export interface Agent {
   id: number;
   name: string;
+  modelName?: string;
   region: 'SG' | 'CN';
   apiKey: string;
   status: string;
@@ -25,12 +26,14 @@ export interface Agent {
 
 export interface CreateAgentInput {
   name: string;
+  modelName?: string;
   region: 'SG' | 'CN';
   apiKey: string;
 }
 
 export interface UpdateAgentInput {
   name?: string;
+  modelName?: string;
   region?: 'SG' | 'CN';
   apiKey?: string;
   status?: string;
@@ -71,7 +74,6 @@ export const agentsApi = {
   update: (id: number, data: UpdateAgentInput) =>
     api.put<Agent>(`/agents/${id}`, data).then((res) => res.data),
   delete: (id: number) => api.delete(`/agents/${id}`).then((res) => res.data),
-  test: (id: number) => api.post(`/agents/${id}/test`).then((res) => res.data),
 };
 
 // Tests
@@ -95,6 +97,8 @@ export const historyApi = {
     sortOrder?: 'asc' | 'desc';
   }) => api.get<{ data: TestHistory[]; pagination: any }>('/history', { params }).then((res) => res.data),
   getOne: (id: number) => api.get<TestHistory>(`/history/${id}`).then((res) => res.data),
+  getMultiple: (ids: number[]) => 
+    Promise.all(ids.map(id => api.get<TestHistory>(`/history/${id}`).then((res) => res.data))),
   delete: (id: number) => api.delete(`/history/${id}`).then((res) => res.data),
   download: (id: number, format: 'excel' | 'markdown' | 'json') => {
     const url = `/api/download?id=${id}&format=${format}`;
