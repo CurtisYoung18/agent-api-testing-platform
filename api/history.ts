@@ -40,8 +40,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         },
       });
 
+      // Convert Decimal fields to numbers for JSON serialization
+      const formattedHistory = history.map((record: any) => ({
+        ...record,
+        successRate: parseFloat(record.successRate.toString()),
+        avgResponseTime: record.avgResponseTime ? parseFloat(record.avgResponseTime.toString()) : null,
+      }));
+
       return res.json({
-        data: history,
+        data: formattedHistory,
         pagination: {
           page,
           limit,
