@@ -279,25 +279,30 @@ export function HistoryPage() {
                     <table className="w-full">
                       <thead>
                         <tr className="border-b border-primary-200">
-                          <th className="text-left p-3 text-sm font-medium text-text-primary">序号</th>
-                          <th className="text-left p-3 text-sm font-medium text-text-primary">问题</th>
-                          <th className="text-left p-3 text-sm font-medium text-text-primary">状态</th>
-                          <th className="text-left p-3 text-sm font-medium text-text-primary">响应时间</th>
+                          <th className="text-left p-3 text-sm font-medium text-text-primary w-12">序号</th>
+                          <th className="text-left p-3 text-sm font-medium text-text-primary w-1/3">问题</th>
+                          <th className="text-left p-3 text-sm font-medium text-text-primary w-2/3">回答</th>
                         </tr>
                       </thead>
                       <tbody>
                         {selectedRecord.jsonData.results.map((result: any, index: number) => (
-                          <tr key={index} className="border-b border-primary-100">
-                            <td className="p-3 text-sm text-text-secondary">{index + 1}</td>
-                            <td className="p-3 text-sm text-text-primary max-w-md truncate">{result.question}</td>
-                            <td className="p-3">
+                          <tr key={index} className="border-b border-primary-100 hover:bg-primary-50/30">
+                            <td className="p-3 text-sm text-text-secondary align-top">{index + 1}</td>
+                            <td className="p-3 text-sm text-text-primary align-top">
+                              <div className="whitespace-pre-wrap break-words">{result.question}</div>
+                            </td>
+                            <td className="p-3 text-sm align-top">
                               {result.success ? (
-                                <span className="badge badge-success">✅ 通过</span>
+                                <div className="whitespace-pre-wrap break-words text-text-primary">
+                                  {result.response || '无响应内容'}
+                                </div>
                               ) : (
-                                <span className="badge badge-warning">❌ 失败</span>
+                                <div className="text-error">
+                                  <span className="font-medium">错误：</span>
+                                  {result.error || '未知错误'}
+                                </div>
                               )}
                             </td>
-                            <td className="p-3 text-sm text-text-secondary">{result.responseTime}ms</td>
                           </tr>
                         ))}
                       </tbody>
