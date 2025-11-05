@@ -461,57 +461,110 @@ export function TestPage() {
 
             {/* Step 4: Start Test */}
             {step === 4 && (
-              <div className="space-y-6 text-center py-12">
-                <PlayIcon className="w-20 h-20 text-primary-400 mx-auto mb-4" />
-                <h2 className="text-2xl font-bold text-text-primary mb-2">准备就绪！</h2>
-                <p className="text-text-secondary mb-8">
-                  点击下方按钮开始执行测试
-                </p>
+              <div className="space-y-6">
+                {createTestMutation.isPending ? (
+                  // Loading State
+                  <div className="text-center py-12">
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                      className="w-20 h-20 mx-auto mb-6"
+                    >
+                      <BeakerIcon className="w-full h-full text-primary-500" />
+                    </motion.div>
+                    <h2 className="text-2xl font-bold text-text-primary mb-2">测试进行中...</h2>
+                    <p className="text-text-secondary mb-8">正在执行测试，请稍候</p>
+                    
+                    <div className="glass-card p-6 max-w-md mx-auto">
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-text-secondary">正在解析测试文件...</span>
+                          <motion.span
+                            animate={{ opacity: [0.3, 1, 0.3] }}
+                            transition={{ duration: 1.5, repeat: Infinity }}
+                            className="text-primary-500 text-xl"
+                          >
+                            ●
+                          </motion.span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-text-secondary">调用 Agent API...</span>
+                          <motion.span
+                            animate={{ opacity: [0.3, 1, 0.3] }}
+                            transition={{ duration: 1.5, repeat: Infinity, delay: 0.3 }}
+                            className="text-primary-500 text-xl"
+                          >
+                            ●
+                          </motion.span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-text-secondary">生成测试报告...</span>
+                          <motion.span
+                            animate={{ opacity: [0.3, 1, 0.3] }}
+                            transition={{ duration: 1.5, repeat: Infinity, delay: 0.6 }}
+                            className="text-primary-500 text-xl"
+                          >
+                            ●
+                          </motion.span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  // Ready to Start
+                  <div className="text-center py-12">
+                    <PlayIcon className="w-20 h-20 text-primary-400 mx-auto mb-4" />
+                    <h2 className="text-2xl font-bold text-text-primary mb-2">准备就绪！</h2>
+                    <p className="text-text-secondary mb-8">
+                      点击下方按钮开始执行测试
+                    </p>
 
-                <div className="glass-card p-6 bg-primary-50/30 max-w-md mx-auto text-left space-y-3">
-                  <h3 className="font-semibold text-text-primary mb-3">测试配置确认:</h3>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-text-secondary">Agent:</span>
-                    <span className="font-medium text-text-primary">
-                      {selectedAgent?.name} ({selectedAgent?.region})
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-text-secondary">数据文件:</span>
-                    <span className="font-medium text-text-primary">{uploadedFile?.name}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-text-secondary">执行模式:</span>
-                    <span className="font-medium text-text-primary">
-                      {executionMode === 'parallel' ? '并行执行' : '串行执行'}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-text-secondary">速率限制:</span>
-                    <span className="font-medium text-text-primary">{rpm} RPM</span>
-                  </div>
-                </div>
+                    <div className="glass-card p-6 bg-primary-50/30 max-w-md mx-auto text-left space-y-3">
+                      <h3 className="font-semibold text-text-primary mb-3">测试配置确认:</h3>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-text-secondary">Agent:</span>
+                        <span className="font-medium text-text-primary">
+                          {selectedAgent?.name} ({selectedAgent?.region})
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-text-secondary">数据文件:</span>
+                        <span className="font-medium text-text-primary">{uploadedFile?.name}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-text-secondary">执行模式:</span>
+                        <span className="font-medium text-text-primary">
+                          {executionMode === 'parallel' ? '并行执行' : '串行执行'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-text-secondary">速率限制:</span>
+                        <span className="font-medium text-text-primary">{rpm} RPM</span>
+                      </div>
+                    </div>
 
-                {testError && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 max-w-md mx-auto"
-                  >
-                    <p className="text-sm text-error">{testError}</p>
-                  </motion.div>
+                    {testError && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 max-w-md mx-auto mt-6"
+                      >
+                        <p className="text-sm text-error">{testError}</p>
+                      </motion.div>
+                    )}
+
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={handleStartTest}
+                      disabled={createTestMutation.isPending}
+                      className="btn-primary text-lg px-10 py-4 flex items-center space-x-3 mx-auto mt-8 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <BeakerIcon className="w-6 h-6" />
+                      <span>开始测试</span>
+                    </motion.button>
+                  </div>
                 )}
-
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={handleStartTest}
-                  disabled={createTestMutation.isPending}
-                  className="btn-primary text-lg px-10 py-4 flex items-center space-x-3 mx-auto mt-8 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <BeakerIcon className="w-6 h-6" />
-                  <span>{createTestMutation.isPending ? '提交中...' : '开始测试'}</span>
-                </motion.button>
               </div>
             )}
           </motion.div>

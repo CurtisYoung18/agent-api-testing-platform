@@ -17,13 +17,18 @@
       "destination": "/api/download"
     },
     {
+      "source": "/api/tests",
+      "destination": "/api/tests"
+    },
+    {
       "source": "/api/:path*",
       "destination": "/api/:path*"
     }
   ],
   "functions": {
     "api/**/*.ts": {
-      "includeFiles": "node_modules/.prisma/client/**"
+      "includeFiles": "node_modules/.prisma/client/**",
+      "maxDuration": 60
     }
   }
 }
