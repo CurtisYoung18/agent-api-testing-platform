@@ -3,6 +3,16 @@
   "buildCommand": "cd client && npm install && npm run build",
   "outputDirectory": "client/dist",
   "installCommand": "npm install && npx prisma generate",
+  "rewrites": [
+    {
+      "source": "/api/agents/:id",
+      "destination": "/api/agent-detail"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "/api/:path*"
+    }
+  ],
   "functions": {
     "api/**/*.ts": {
       "includeFiles": "node_modules/.prisma/client/**"
