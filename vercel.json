@@ -17,6 +17,10 @@
       "destination": "/api/download"
     },
     {
+      "source": "/api/tests/stream",
+      "destination": "/api/tests-stream"
+    },
+    {
       "source": "/api/tests",
       "destination": "/api/tests"
     },
@@ -28,7 +32,7 @@
   "functions": {
     "api/**/*.ts": {
       "includeFiles": "node_modules/.prisma/client/**",
-      "maxDuration": 60
+      "maxDuration": 300
     }
   }
 }

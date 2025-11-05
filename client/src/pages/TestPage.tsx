@@ -37,6 +37,10 @@ export function TestPage() {
   const [executionMode, setExecutionMode] = useState<'parallel' | 'sequential'>('parallel')
   const [rpm, setRpm] = useState(60)
   const [testError, setTestError] = useState('')
+  const [isTestingLive, setIsTestingLive] = useState(false)
+  const [liveResults, setLiveResults] = useState<any[]>([])
+  const [liveStats, setLiveStats] = useState({ current: 0, total: 0, passedCount: 0, failedCount: 0, successRate: '0.00' })
+  const [currentQuestion, setCurrentQuestion] = useState('')
 
   // Fetch agents
   const { data: agents = [], isLoading } = useQuery({
