@@ -359,12 +359,31 @@ export function TestPage() {
                         <p className="text-sm text-text-secondary">
                           {(uploadedFile.size / 1024).toFixed(2)} KB
                         </p>
+                        {previewQuestions.length > 0 && (
+                          <div className="mt-4">
+                            <p className="text-sm font-semibold text-success mb-2">
+                              ✅ 成功解析 {previewQuestions.length} 个测试问题
+                            </p>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setShowPreview(!showPreview)
+                              }}
+                              className="text-sm text-primary-600 hover:text-primary-700 font-medium underline"
+                            >
+                              {showPreview ? '隐藏预览' : '👀 点击预览问题'}
+                            </button>
+                          </div>
+                        )}
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
                             setUploadedFile(null)
+                            setPreviewQuestions([])
+                            setShowPreview(false)
                           }}
-                          className="text-sm text-red-500 hover:text-red-600"
+                          className="text-sm text-red-500 hover:text-red-600 mt-2"
                         >
                           移除文件
                         </button>
@@ -383,6 +402,49 @@ export function TestPage() {
                     )}
                   </div>
                 </div>
+
+                {/* Questions Preview Section */}
+                <AnimatePresence>
+                  {showPreview && previewQuestions.length > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="glass-card p-6 space-y-4"
+                    >
+                      <div className="flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-sm py-2 -mt-2 mb-2 border-b border-primary-200">
+                        <h3 className="font-bold text-text-primary">
+                          📝 问题预览 ({previewQuestions.length} 个)
+                        </h3>
+                        <button
+                          onClick={() => setShowPreview(false)}
+                          className="text-text-tertiary hover:text-text-primary text-2xl leading-none"
+                        >
+                          ×
+                        </button>
+                      </div>
+                      
+                      <div className="max-h-96 overflow-y-auto space-y-3 pr-2">
+                        {previewQuestions.map((question, index) => (
+                          <motion.div
+                            key={index}
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: index * 0.03 }}
+                            className="p-4 bg-gradient-to-r from-primary-50/50 to-transparent rounded-lg border-l-4 border-primary-400 hover:shadow-sm transition-shadow"
+                          >
+                            <p className="text-xs font-semibold text-primary-600 mb-2">
+                              问题 {index + 1}
+                            </p>
+                            <p className="text-sm text-text-primary leading-relaxed">
+                              {question}
+                            </p>
+                          </motion.div>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 {selectedAgent && (
                   <div className="glass-card p-4 bg-primary-50/30">
