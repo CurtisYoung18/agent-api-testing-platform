@@ -40,58 +40,12 @@ CREATE INDEX IF NOT EXISTS idx_test_date ON test_history(test_date DESC);
 CREATE INDEX IF NOT EXISTS idx_agent_id ON test_history(agent_id);
 CREATE INDEX IF NOT EXISTS idx_success_rate ON test_history(success_rate);
 
--- 4. 插入6个mock agents
-INSERT INTO agents (name, region, api_key, last_used) VALUES
-  ('Production SG Agent', 'SG', 'sk-prod-sg-mock1234567890abcdef4Xz7', NOW() - INTERVAL '2 hours'),
-  ('Test SG Agent', 'SG', 'sk-test-sg-mock1234567890abcdef9Bc3', NOW() - INTERVAL '8 hours'),
-  ('Production CN Agent', 'CN', 'sk-prod-cn-mock1234567890abcdef6Mn8', NOW() - INTERVAL '1 day'),
-  ('Test CN Agent', 'CN', 'sk-test-cn-mock1234567890abcdef2Lp4', NOW() - INTERVAL '1 day'),
-  ('Dev SG Agent', 'SG', 'sk-dev-sg-mock1234567890abcdef8Qr5', NOW() - INTERVAL '2 days'),
-  ('QA CN Agent', 'CN', 'sk-qa-cn-mock1234567890abcdef3Wy9', NOW() - INTERVAL '3 days')
-ON CONFLICT DO NOTHING;
+-- 4. 验证数据库结构
+SELECT 'Agents表创建成功' as message;
+SELECT 'Test History表创建成功' as message;
 
--- 5. 插入1条mock测试历史（可选）
-INSERT INTO test_history (
-  agent_id, 
-  agent_name, 
-  test_date, 
-  total_questions, 
-  passed_count, 
-  failed_count, 
-  success_rate, 
-  duration_seconds, 
-  avg_response_time, 
-  execution_mode, 
-  rpm, 
-  timeout_seconds, 
-  retry_count,
-  json_data
-) VALUES (
-  1,
-  'Production SG Agent',
-  NOW() - INTERVAL '5 hours',
-  150,
-  142,
-  8,
-  94.67,
-  225,
-  2.8,
-  'parallel',
-  60,
-  30,
-  3,
-  '{"summary": "测试完成", "results": []}'::jsonb
-)
-ON CONFLICT DO NOTHING;
+-- 显示表结构
+\d agents
+\d test_history
 
--- 6. 验证数据
-SELECT 'Agents创建成功:' as message, COUNT(*) as count FROM agents;
-SELECT 'Test History创建成功:' as message, COUNT(*) as count FROM test_history;
-
--- 显示所有agents
-SELECT id, name, region, 
-       LEFT(api_key, 15) || '***' || RIGHT(api_key, 4) as api_key_masked,
-       last_used, created_at 
-FROM agents 
-ORDER BY last_used DESC;
 

@@ -15,10 +15,20 @@ import {
   ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline'
 
+interface Agent {
+  id: number
+  name: string
+  region: string
+  apiKey: string
+  status: string
+  lastUsed: string | null
+}
+
 export function AgentsPage() {
   const queryClient = useQueryClient()
   const [searchQuery, setSearchQuery] = useState('')
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [editingAgent, setEditingAgent] = useState<Agent | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null)
   const [newAgent, setNewAgent] = useState<CreateAgentInput>({
     name: '',
@@ -53,6 +63,20 @@ export function AgentsPage() {
     },
   })
 
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Partial<CreateAgentInput> }) => 
+      agentsApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agents'] })
+      setEditingAgent(null)
+      setNewAgent({ name: '', region: 'SG', apiKey: '' })
+      setFormError('')
+    },
+    onError: () => {
+      setFormError('更新失败，请检查输入并重试')
+    },
+  })
+
   const handleDelete = (id: number, name: string) => {
     setDeleteConfirm({ id, name })
   }
@@ -70,6 +94,38 @@ export function AgentsPage() {
     }
     setFormError('')
     createMutation.mutate(newAgent)
+  }
+
+  const handleEdit = (agent: Agent) => {
+    setEditingAgent(agent)
+    setNewAgent({
+      name: agent.name,
+      region: agent.region as 'SG' | 'CN',
+      apiKey: '', // 不显示完整的API Key
+    })
+    setFormError('')
+  }
+
+  const handleUpdate = () => {
+    if (!editingAgent) return
+    
+    if (!newAgent.name) {
+      setFormError('请填写名称')
+      return
+    }
+    
+    const updateData: Partial<CreateAgentInput> = {
+      name: newAgent.name,
+      region: newAgent.region,
+    }
+    
+    // Only include apiKey if it's been changed (not empty)
+    if (newAgent.apiKey) {
+      updateData.apiKey = newAgent.apiKey
+    }
+    
+    setFormError('')
+    updateMutation.mutate({ id: editingAgent.id, data: updateData })
   }
 
   const getRegionIcon = (region: string) => {
@@ -151,7 +207,10 @@ export function AgentsPage() {
                     </p>
                   </div>
                   <div className="flex space-x-2">
-                    <button className="btn-outline py-1 px-3 text-sm flex items-center space-x-1">
+                    <button 
+                      onClick={() => handleEdit(agent)}
+                      className="btn-outline py-1 px-3 text-sm flex items-center space-x-1"
+                    >
                       <PencilIcon className="w-4 h-4" />
                       <span>编辑</span>
                     </button>
@@ -241,15 +300,22 @@ export function AgentsPage() {
         )}
       </AnimatePresence>
 
-      {/* Create Agent Modal */}
+      {/* Create/Edit Agent Modal */}
       <AnimatePresence>
-        {isCreateModalOpen && (
+        {(isCreateModalOpen || editingAgent) && (
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
-            onClick={() => !createMutation.isPending && setIsCreateModalOpen(false)}
+            onClick={() => {
+              if (!createMutation.isPending && !updateMutation.isPending) {
+                setIsCreateModalOpen(false)
+                setEditingAgent(null)
+                setNewAgent({ name: '', region: 'SG', apiKey: '' })
+                setFormError('')
+              }
+            }}
           >
             <motion.div 
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
@@ -260,11 +326,18 @@ export function AgentsPage() {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-text-primary">添加 Agent</h2>
+                <h2 className="text-xl font-bold text-text-primary">
+                  {editingAgent ? '编辑 Agent' : '添加 Agent'}
+                </h2>
                 <button
-                  onClick={() => setIsCreateModalOpen(false)}
+                  onClick={() => {
+                    setIsCreateModalOpen(false)
+                    setEditingAgent(null)
+                    setNewAgent({ name: '', region: 'SG', apiKey: '' })
+                    setFormError('')
+                  }}
                   className="text-text-tertiary hover:text-text-primary transition-colors"
-                  disabled={createMutation.isPending}
+                  disabled={createMutation.isPending || updateMutation.isPending}
                 >
                   <XMarkIcon className="w-6 h-6" />
                 </button>
@@ -281,7 +354,7 @@ export function AgentsPage() {
                     onChange={(e) => setNewAgent({ ...newAgent, name: e.target.value })}
                     className="input-field"
                     placeholder="例如: Production Agent"
-                    disabled={createMutation.isPending}
+                    disabled={createMutation.isPending || updateMutation.isPending}
                   />
                 </div>
 
@@ -293,7 +366,7 @@ export function AgentsPage() {
                     value={newAgent.region}
                     onChange={(e) => setNewAgent({ ...newAgent, region: e.target.value as 'SG' | 'CN' })}
                     className="input-field"
-                    disabled={createMutation.isPending}
+                    disabled={createMutation.isPending || updateMutation.isPending}
                   >
                     <option value="SG">新加坡 (SG)</option>
                     <option value="CN">中国 (CN)</option>
@@ -302,16 +375,21 @@ export function AgentsPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-text-primary mb-1">
-                    API Key *
+                    API Key {editingAgent ? '(留空则不修改)' : '*'}
                   </label>
                   <input
                     type="text"
                     value={newAgent.apiKey}
                     onChange={(e) => setNewAgent({ ...newAgent, apiKey: e.target.value })}
                     className="input-field"
-                    placeholder="输入 API Key"
-                    disabled={createMutation.isPending}
+                    placeholder={editingAgent ? '输入新的 API Key（可选）' : '输入 API Key'}
+                    disabled={createMutation.isPending || updateMutation.isPending}
                   />
+                  {editingAgent && (
+                    <p className="text-xs text-text-tertiary mt-1">
+                      当前 API Key: {editingAgent.apiKey}
+                    </p>
+                  )}
                 </div>
 
                 {formError && (
@@ -326,18 +404,25 @@ export function AgentsPage() {
 
                 <div className="flex space-x-3 pt-4">
                   <button
-                    onClick={() => setIsCreateModalOpen(false)}
+                    onClick={() => {
+                      setIsCreateModalOpen(false)
+                      setEditingAgent(null)
+                      setNewAgent({ name: '', region: 'SG', apiKey: '' })
+                      setFormError('')
+                    }}
                     className="btn-outline flex-1"
-                    disabled={createMutation.isPending}
+                    disabled={createMutation.isPending || updateMutation.isPending}
                   >
                     取消
                   </button>
                   <button
-                    onClick={handleCreate}
+                    onClick={editingAgent ? handleUpdate : handleCreate}
                     className="btn-primary flex-1"
-                    disabled={createMutation.isPending}
+                    disabled={createMutation.isPending || updateMutation.isPending}
                   >
-                    {createMutation.isPending ? '创建中...' : '创建'}
+                    {(createMutation.isPending || updateMutation.isPending) ? 
+                      (editingAgent ? '更新中...' : '创建中...') : 
+                      (editingAgent ? '更新' : '创建')}
                   </button>
                 </div>
               </div>
