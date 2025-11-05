@@ -51,6 +51,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       END $$;
     `;
 
+    console.log('Fixing numeric field types...');
+    
+    // Fix avgResponseTime and successRate to use proper DOUBLE PRECISION
+    await prismaClient.$executeRaw`
+      DO $$ 
+      BEGIN
+          -- Fix avg_response_time to DOUBLE PRECISION
+          ALTER TABLE test_history 
+          ALTER COLUMN avg_response_time TYPE DOUBLE PRECISION;
+          
+          -- Fix success_rate to DOUBLE PRECISION
+          ALTER TABLE test_history 
+          ALTER COLUMN success_rate TYPE DOUBLE PRECISION;
+      END $$;
+    `;
+
+    console.log('Numeric fields fixed');
+
     // Verify the column was added
     const verifyCheck = await prismaClient.$queryRaw`
       SELECT column_name 

@@ -119,6 +119,7 @@ export function AgentsPage() {
     
     const updateData: Partial<CreateAgentInput> = {
       name: newAgent.name,
+      modelName: newAgent.modelName,
       region: newAgent.region,
     }
     
