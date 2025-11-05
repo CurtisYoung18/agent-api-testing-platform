@@ -58,6 +58,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
+    if (req.method === 'DELETE') {
+      const { id } = req.query;
+
+      if (!id || Array.isArray(id)) {
+        return res.status(400).json({ error: '无效的历史记录 ID' });
+      }
+
+      const historyId = parseInt(id, 10);
+
+      if (isNaN(historyId)) {
+        return res.status(400).json({ error: '无效的历史记录 ID' });
+      }
+
+      const history = await prismaClient.testHistory.findUnique({
+        where: { id: historyId },
+      });
+
+      if (!history) {
+        return res.status(404).json({ error: '历史记录不存在' });
+      }
+
+      await prismaClient.testHistory.delete({
+        where: { id: historyId },
+      });
+
+      return res.json({ message: '删除成功' });
+    }
+
     return res.status(405).json({ error: '方法不允许' });
   } catch (error: any) {
     console.error('History API Error:', error);

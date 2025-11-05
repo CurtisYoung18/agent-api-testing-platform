@@ -97,18 +97,13 @@ export const historyApi = {
   getOne: (id: number) => api.get<TestHistory>(`/history/${id}`).then((res) => res.data),
   delete: (id: number) => api.delete(`/history/${id}`).then((res) => res.data),
   download: (id: number, format: 'excel' | 'markdown' | 'json') => {
-    return api.get(`/history/${id}/download/${format}`, {
-      responseType: 'blob',
-    }).then((res) => {
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      const extension = format === 'markdown' ? 'md' : format === 'excel' ? 'xlsx' : 'json';
-      link.setAttribute('download', `test_report_${id}.${extension}`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    });
+    const url = `/api/download?id=${id}&format=${format}`;
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `test_report_${id}.${format === 'markdown' ? 'md' : format === 'excel' ? 'xlsx' : 'json'}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   },
 };
 

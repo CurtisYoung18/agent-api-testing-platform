@@ -9,6 +9,14 @@
       "destination": "/api/agent-detail"
     },
     {
+      "source": "/api/history/:id",
+      "destination": "/api/history"
+    },
+    {
+      "source": "/api/download",
+      "destination": "/api/download"
+    },
+    {
       "source": "/api/:path*",
       "destination": "/api/:path*"
     }
