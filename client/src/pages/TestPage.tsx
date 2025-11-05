@@ -13,6 +13,8 @@ import {
   DocumentArrowUpIcon,
   Cog6ToothIcon,
   PlayIcon,
+  ArrowDownTrayIcon,
+  InformationCircleIcon,
 } from '@heroicons/react/24/outline'
 import { api } from '../lib/api'
 
@@ -246,6 +248,41 @@ export function TestPage() {
                   <p className="text-text-secondary">上传包含测试问题的 Excel 文件</p>
                 </div>
 
+                {/* Template Guide */}
+                <div className="glass-card p-6 bg-blue-50/30 border-2 border-blue-200">
+                  <div className="flex items-start space-x-3 mb-4">
+                    <InformationCircleIcon className="w-6 h-6 text-blue-500 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <h3 className="font-semibold text-text-primary mb-2">模板格式说明</h3>
+                      <p className="text-sm text-text-secondary mb-4">
+                        请按照以下格式准备您的测试数据，Excel文件必须包含 <code className="bg-blue-100 px-2 py-0.5 rounded text-blue-700">input</code> 列：
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Template Preview Image */}
+                  <div className="bg-white rounded-lg p-4 mb-4 border border-blue-200">
+                    <img 
+                      src="/测试模版.png" 
+                      alt="测试模版示例" 
+                      className="w-full max-w-2xl mx-auto rounded shadow-sm"
+                      style={{ maxHeight: '162px', objectFit: 'contain' }}
+                    />
+                  </div>
+
+                  {/* Download Template Button */}
+                  <div className="flex justify-center">
+                    <a
+                      href="/测试集模板.xlsx"
+                      download="测试集模板.xlsx"
+                      className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors duration-200 shadow-md hover:shadow-lg"
+                    >
+                      <ArrowDownTrayIcon className="w-5 h-5" />
+                      <span>下载模板文件</span>
+                    </a>
+                  </div>
+                </div>
+
                 <div
                   {...getRootProps()}
                   className={`border-2 border-dashed rounded-lg p-12 text-center transition-all duration-200 cursor-pointer ${
@@ -285,7 +322,7 @@ export function TestPage() {
                         </p>
                         <p className="text-sm text-text-secondary">或点击浏览文件</p>
                         <p className="text-xs text-text-tertiary mt-4">
-                          支持格式: .xlsx, .xls • 模板要求: 必须包含 'input' 列
+                          支持格式: .xlsx, .xls
                         </p>
                       </>
                     )}
