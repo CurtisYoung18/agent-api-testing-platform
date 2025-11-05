@@ -51,8 +51,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Convert Decimal fields to numbers for JSON serialization
         const formattedRecord = {
           ...record,
-          successRate: parseFloat(record.successRate.toString()),
-          avgResponseTime: record.avgResponseTime ? parseFloat(record.avgResponseTime.toString()) : null,
+          successRate: typeof record.successRate === 'number' ? record.successRate : parseFloat(record.successRate?.toString() || '0'),
+          avgResponseTime: record.avgResponseTime ? (typeof record.avgResponseTime === 'number' ? record.avgResponseTime : parseFloat(record.avgResponseTime.toString())) : null,
           // Use agentName from record, fallback to agent.name if needed
           agentName: record.agentName || record.agent?.name || 'Unknown Agent',
         };
@@ -80,8 +80,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Convert Decimal fields to numbers for JSON serialization
       const formattedHistory = history.map((record: any) => ({
         ...record,
-        successRate: parseFloat(record.successRate.toString()),
-        avgResponseTime: record.avgResponseTime ? parseFloat(record.avgResponseTime.toString()) : null,
+        successRate: typeof record.successRate === 'number' ? record.successRate : parseFloat(record.successRate?.toString() || '0'),
+        avgResponseTime: record.avgResponseTime ? (typeof record.avgResponseTime === 'number' ? record.avgResponseTime : parseFloat(record.avgResponseTime.toString())) : null,
       }));
 
       return res.json({
