@@ -33,7 +33,7 @@ async function parseExcelFile(filePath: string): Promise<string[]> {
   return questions;
 }
 
-// Call Agent API
+// Call Agent API using GPTBots Conversation API
 async function callAgentAPI(apiKey: string, region: string, question: string): Promise<{ 
   success: boolean; 
   response?: string; 
@@ -43,38 +43,103 @@ async function callAgentAPI(apiKey: string, region: string, question: string): P
   const startTime = Date.now();
   
   try {
-    // TODO: Replace with actual API endpoint based on region
-    // This is a placeholder - you need to implement the actual API call
+    // Step 1: Create conversation_id
     const endpoint = region === 'SG' 
-      ? 'https://api.example.com/sg/chat' 
-      : 'https://api.example.com/cn/chat';
+      ? 'https://api-sg.gptbots.ai' 
+      : 'https://api-cn.gptbots.ai';
 
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 1000));
-    
-    // Mock response for now
-    const responseTime = Date.now() - startTime;
-    
-    // Simulate 80% success rate
-    const success = Math.random() > 0.2;
-    
-    if (success) {
-      return {
-        success: true,
-        response: `模拟回答：${question}`,
-        responseTime,
-      };
-    } else {
+    // Generate a unique user_id for this test session
+    const userId = `test_user_${Date.now()}`;
+
+    // Create conversation
+    const conversationResponse = await fetch(`${endpoint}/v1/conversation`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        user_id: userId,
+      }),
+    });
+
+    if (!conversationResponse.ok) {
+      const errorData = await conversationResponse.json().catch(() => ({}));
       return {
         success: false,
-        error: '模拟API错误',
+        error: errorData.message || `创建对话失败: ${conversationResponse.status}`,
+        responseTime: Date.now() - startTime,
+      };
+    }
+
+    const conversationData = await conversationResponse.json();
+    const conversationId = conversationData.conversation_id;
+
+    // Step 2: Send message
+    const messageResponse = await fetch(`${endpoint}/v2/conversation/message`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        conversation_id: conversationId,
+        response_mode: 'blocking',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: question,
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    const responseTime = Date.now() - startTime;
+
+    if (!messageResponse.ok) {
+      const errorData = await messageResponse.json().catch(() => ({}));
+      return {
+        success: false,
+        error: errorData.message || `API调用失败: ${messageResponse.status}`,
         responseTime,
       };
     }
+
+    const messageData = await messageResponse.json();
+
+    // Extract text response from output
+    let responseText = '';
+    if (messageData.output && Array.isArray(messageData.output)) {
+      for (const output of messageData.output) {
+        if (output.content && output.content.text) {
+          responseText += output.content.text;
+        }
+      }
+    }
+
+    if (!responseText) {
+      return {
+        success: false,
+        error: 'API返回了空响应',
+        responseTime,
+      };
+    }
+
+    return {
+      success: true,
+      response: responseText,
+      responseTime,
+    };
+
   } catch (error: any) {
     return {
       success: false,
-      error: error.message,
+      error: error.message || '网络请求失败',
       responseTime: Date.now() - startTime,
     };
   }

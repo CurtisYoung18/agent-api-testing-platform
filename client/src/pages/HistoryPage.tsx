@@ -14,6 +14,7 @@ import {
   XCircleIcon,
   ChartBarIcon,
   XMarkIcon,
+  ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline'
 
 export function HistoryPage() {
@@ -41,9 +42,16 @@ export function HistoryPage() {
     }
   }
 
+  const [deleteConfirmRecord, setDeleteConfirmRecord] = useState<{ id: number; name: string } | null>(null)
+
   const handleDelete = (id: number, agentName: string) => {
-    if (window.confirm(`确定要删除 "${agentName}" 的测试记录吗？`)) {
-      deleteMutation.mutate(id)
+    setDeleteConfirmRecord({ id, name: agentName })
+  }
+
+  const confirmDelete = () => {
+    if (deleteConfirmRecord) {
+      deleteMutation.mutate(deleteConfirmRecord.id)
+      setDeleteConfirmRecord(null)
     }
   }
 
@@ -191,6 +199,56 @@ export function HistoryPage() {
           </button>
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {deleteConfirmRecord && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
+            onClick={() => !deleteMutation.isPending && setDeleteConfirmRecord(null)}
+          >
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ type: "spring", duration: 0.3 }}
+              className="glass-card p-6 max-w-md w-full mx-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center space-x-3 mb-4">
+                <div className="bg-red-500/10 p-3 rounded-full">
+                  <ExclamationTriangleIcon className="w-6 h-6 text-error" />
+                </div>
+                <h2 className="text-xl font-bold text-text-primary">确认删除</h2>
+              </div>
+
+              <p className="text-text-secondary mb-6">
+                确定要删除 "<span className="font-semibold text-text-primary">{deleteConfirmRecord.name}</span>" 的测试记录吗？此操作无法撤销。
+              </p>
+
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => setDeleteConfirmRecord(null)}
+                  className="btn-outline flex-1"
+                  disabled={deleteMutation.isPending}
+                >
+                  取消
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  className="btn-primary flex-1 bg-error hover:bg-error/90"
+                  disabled={deleteMutation.isPending}
+                >
+                  {deleteMutation.isPending ? '删除中...' : '确认删除'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Detail Modal */}
       <AnimatePresence>
