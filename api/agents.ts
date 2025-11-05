@@ -72,9 +72,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: '方法不允许' });
   } catch (error: any) {
     console.error('Agents API Error:', error);
+    console.error('Error details:', {
+      name: error.name,
+      message: error.message,
+      code: error.code,
+      meta: error.meta,
+      stack: error.stack
+    });
     return res.status(500).json({ 
       error: '服务器错误',
-      message: error.message 
+      message: error.message,
+      code: error.code
     });
   }
 }

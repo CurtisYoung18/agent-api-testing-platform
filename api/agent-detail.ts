@@ -101,15 +101,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: '方法不允许' });
   } catch (error: any) {
     console.error('Agent Detail API Error:', error);
+    console.error('Error details:', {
+      code: error.code,
+      message: error.message,
+      meta: error.meta,
+      stack: error.stack
+    });
     
     // Handle specific Prisma errors
     if (error.code === 'P2025') {
       return res.status(404).json({ error: 'Agent 不存在' });
     }
 
+    if (error.code === 'P2002') {
+      return res.status(400).json({ error: '数据冲突' });
+    }
+
     return res.status(500).json({
       error: '服务器错误',
       message: error.message,
+      code: error.code,
+      details: error.meta
     });
   }
 }

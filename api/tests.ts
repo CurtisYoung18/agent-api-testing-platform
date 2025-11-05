@@ -444,9 +444,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    console.log('=== Tests API Request Started ===');
     const prismaClient = await getPrismaClient();
 
       // Parse form data
+    console.log('Parsing form data...');
     const form = formidable({});
     const [fields, files] = await form.parse(req);
 
@@ -455,28 +457,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const rpm = parseInt(fields.rpm?.[0] || '60', 10);
     const file = files.file?.[0];
 
+    console.log('Request params:', { agentId, executionMode, rpm, hasFile: !!file });
+
     if (!agentId || !file) {
+      console.error('Missing required fields:', { agentId: !!agentId, file: !!file });
       return res.status(400).json({ error: '缺少必填字段' });
     }
 
     // Get agent info
+    console.log('Fetching agent:', agentId);
     const agent = await prismaClient.agent.findUnique({
       where: { id: parseInt(agentId, 10) },
     });
 
     if (!agent) {
+      console.error('Agent not found:', agentId);
       return res.status(404).json({ error: 'Agent 不存在' });
     }
 
+    console.log('Agent found:', { id: agent.id, name: agent.name, region: agent.region });
+
     // Parse Excel file
+    console.log('Parsing Excel file:', file.filepath);
     const { questions, referenceOutputs } = await parseExcelFile(file.filepath);
+    console.log('Excel parsed:', { questionCount: questions.length });
 
     if (questions.length === 0) {
       return res.status(400).json({ error: 'Excel文件中未找到有效的测试问题（请确保有"input"列）' });
     }
 
     // Execute tests
+    console.log('Starting test execution...');
     const testResults = await executeTests(agent, questions, referenceOutputs, executionMode, rpm);
+    console.log('Test execution completed:', {
+      totalQuestions: testResults.totalQuestions,
+      passedCount: testResults.passedCount,
+      failedCount: testResults.failedCount,
+      successRate: testResults.successRate
+    });
 
     const testData = {
       agentName: agent.name,
@@ -488,10 +506,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     };
 
     // Generate reports
+    console.log('Generating reports...');
     const excelBuffer = generateExcelReport(testData);
     const markdownContent = generateMarkdownReport(testData);
+    console.log('Reports generated:', { excelSize: excelBuffer.length, markdownSize: markdownContent.length });
 
     // Save to database
+    console.log('Saving to database...');
     const testHistory = await prismaClient.testHistory.create({
       data: {
         agentId: agent.id,
@@ -515,12 +536,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
     });
 
+    console.log('Test history saved:', { id: testHistory.id });
+
     // Update agent's lastUsed timestamp
+    console.log('Updating agent lastUsed...');
     await prismaClient.agent.update({
       where: { id: agent.id },
       data: { lastUsed: new Date() },
     });
 
+    console.log('=== Tests API Request Completed Successfully ===');
     return res.status(201).json({
       id: testHistory.id,
       message: '测试执行完成',
@@ -535,7 +560,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
     });
   } catch (error: any) {
-    console.error('Tests API Error:', error);
+    console.error('=== Tests API Error ===');
+    console.error('Error:', error);
+    console.error('Error details:', {
+      name: error.name,
+      message: error.message,
+      code: error.code,
+      meta: error.meta,
+      stack: error.stack
+    });
     return res.status(500).json({
       error: '服务器错误',
       message: error.message,
