@@ -24,7 +24,8 @@
     "@prisma/client": "^6.2.0",
     "@types/formidable": "^3.4.6",
     "@vercel/node": "^3.2.21",
-    "formidable": "^3.5.4"
+    "formidable": "^3.5.4",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

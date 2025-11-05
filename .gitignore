@@ -38,6 +38,9 @@ node_modules/.prisma/
 # Test coverage
 coverage/
 
+# Test output
+test_output/
+
 # OS
 Thumbs.db
 
