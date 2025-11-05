@@ -22,7 +22,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const prismaClient = await getPrismaClient();
-    const { id } = req.query;
+    // Check both query and params for id (Express vs Vercel routing)
+    const id = req.query.id || (req as any).params?.id;
 
     if (!id || Array.isArray(id)) {
       return res.status(400).json({ error: '无效的 agent ID' });

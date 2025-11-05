@@ -24,6 +24,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const prismaClient = await getPrismaClient();
 
     if (req.method === 'GET') {
+      // Check both query and params for id (Express vs Vercel routing)
+      const id = req.query.id || (req as any).params?.id;
+
+      // If ID is provided, get single record
+      if (id && !Array.isArray(id)) {
+        const historyId = parseInt(id, 10);
+        
+        if (isNaN(historyId)) {
+          return res.status(400).json({ error: '无效的历史记录 ID' });
+        }
+
+        const record = await prismaClient.testHistory.findUnique({
+          where: { id: historyId },
+          include: {
+            agent: {
+              select: { id: true, name: true, region: true, modelName: true },
+            },
+          },
+        });
+
+        if (!record) {
+          return res.status(404).json({ error: '历史记录不存在' });
+        }
+
+        // Convert Decimal fields to numbers for JSON serialization
+        const formattedRecord = {
+          ...record,
+          successRate: parseFloat(record.successRate.toString()),
+          avgResponseTime: record.avgResponseTime ? parseFloat(record.avgResponseTime.toString()) : null,
+          // Use agentName from record, fallback to agent.name if needed
+          agentName: record.agentName || record.agent?.name || 'Unknown Agent',
+        };
+
+        return res.json(formattedRecord);
+      }
+
+      // Otherwise, get list with pagination
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
       const skip = (page - 1) * limit;
@@ -59,7 +96,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (req.method === 'DELETE') {
-      const { id } = req.query;
+      // Check both query and params for id (Express vs Vercel routing)
+      const id = req.query.id || (req as any).params?.id;
 
       if (!id || Array.isArray(id)) {
         return res.status(400).json({ error: '无效的历史记录 ID' });

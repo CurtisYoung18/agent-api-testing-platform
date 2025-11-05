@@ -33,6 +33,8 @@ app.all('/api/health', async (req, res) => {
 });
 
 app.all('/api/agents/:id', async (req, res) => {
+  // Transfer route params to query for Vercel-style handler
+  Object.assign(req.query, req.params);
   const handler = await loadHandler('./api/agent-detail.ts');
   if (handler) await handler(req, res);
   else res.status(500).json({ error: 'Handler not found' });
@@ -57,6 +59,8 @@ app.all('/api/tests/stream', async (req, res) => {
 });
 
 app.all('/api/history/:id', async (req, res) => {
+  // Transfer route params to query for Vercel-style handler
+  Object.assign(req.query, req.params);
   const handler = await loadHandler('./api/history.ts');
   if (handler) await handler(req, res);
   else res.status(500).json({ error: 'Handler not found' });

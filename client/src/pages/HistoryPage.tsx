@@ -24,6 +24,7 @@ export function HistoryPage() {
   const [page, setPage] = useState(1)
   const [selectedRecord, setSelectedRecord] = useState<TestHistory | null>(null)
   const [selectedForCompare, setSelectedForCompare] = useState<number[]>([])
+  const [isCompareMode, setIsCompareMode] = useState(false)
   
   const { data, isLoading } = useQuery({
     queryKey: ['history', page],
@@ -58,10 +59,26 @@ export function HistoryPage() {
     }
   }
 
-  const toggleSelectForCompare = (id: number) => {
-    setSelectedForCompare(prev => 
-      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-    )
+  const toggleSelectForCompare = (id: number, totalQuestions: number) => {
+    setSelectedForCompare(prev => {
+      if (prev.includes(id)) {
+        return prev.filter(i => i !== id)
+      }
+      
+      // 如果是第一个选择，直接添加
+      if (prev.length === 0) {
+        return [id]
+      }
+      
+      // 检查问题数量是否一致
+      const firstSelected = data?.data.find(r => r.id === prev[0])
+      if (firstSelected && firstSelected.totalQuestions !== totalQuestions) {
+        alert(`请选择相同问题数量的测试记录！\n已选记录有 ${firstSelected.totalQuestions} 个问题，当前记录有 ${totalQuestions} 个问题。`)
+        return prev
+      }
+      
+      return [...prev, id]
+    })
   }
 
   const handleCompare = () => {
@@ -72,6 +89,12 @@ export function HistoryPage() {
 
   const clearSelection = () => {
     setSelectedForCompare([])
+    setIsCompareMode(false)
+  }
+
+  const toggleCompareMode = () => {
+    setIsCompareMode(!isCompareMode)
+    setSelectedForCompare([])
   }
 
   return (
@@ -81,31 +104,41 @@ export function HistoryPage() {
           <ClockIcon className="w-8 h-8 text-primary-500" />
           <h1 className="text-3xl font-bold text-text-primary">测试历史</h1>
         </div>
-        {selectedForCompare.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex items-center space-x-3"
-          >
-            <span className="text-sm text-text-secondary">
-              已选择 {selectedForCompare.length} 项
-            </span>
+        <div className="flex items-center space-x-3">
+          {!isCompareMode ? (
             <button
-              onClick={clearSelection}
-              className="text-sm text-text-tertiary hover:text-text-primary"
-            >
-              清除
-            </button>
-            <button
-              onClick={handleCompare}
-              disabled={selectedForCompare.length < 2}
-              className="btn-primary flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={toggleCompareMode}
+              className="btn-outline flex items-center space-x-2"
             >
               <ChartBarIcon className="w-5 h-5" />
-              <span>对比分析 ({selectedForCompare.length})</span>
+              <span>对比分析</span>
             </button>
-          </motion.div>
-        )}
+          ) : (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-center space-x-3"
+            >
+              <span className="text-sm text-text-secondary">
+                已选择 {selectedForCompare.length} 项
+              </span>
+              <button
+                onClick={toggleCompareMode}
+                className="text-sm text-text-tertiary hover:text-text-primary"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleCompare}
+                disabled={selectedForCompare.length < 2}
+                className="btn-primary flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChartBarIcon className="w-5 h-5" />
+                <span>开始对比 ({selectedForCompare.length})</span>
+              </button>
+            </motion.div>
+          )}
+        </div>
       </div>
 
       {/* Search and Filters */}
@@ -141,12 +174,14 @@ export function HistoryPage() {
             <div key={record.id} className="glass-card p-6 hover:shadow-glass-hover transition-all duration-200">
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-start space-x-4">
-                  <input
-                    type="checkbox"
-                    checked={selectedForCompare.includes(record.id)}
-                    onChange={() => toggleSelectForCompare(record.id)}
-                    className="mt-1 w-5 h-5 text-primary-500 rounded border-gray-300 focus:ring-primary-500"
-                  />
+                  {isCompareMode && (
+                    <input
+                      type="checkbox"
+                      checked={selectedForCompare.includes(record.id)}
+                      onChange={() => toggleSelectForCompare(record.id, record.totalQuestions)}
+                      className="mt-1 w-5 h-5 text-primary-500 rounded border-gray-300 focus:ring-primary-500"
+                    />
+                  )}
                   <div>
                   <p className="text-sm text-text-tertiary">
                     {new Date(record.testDate).toLocaleString('zh-CN')}
@@ -167,6 +202,11 @@ export function HistoryPage() {
                       <ClockIcon className="w-4 h-4" />
                       <span>{Math.floor(record.durationSeconds / 60)}分 {record.durationSeconds % 60}秒</span>
                     </span>
+                    {isCompareMode && (
+                      <span className="text-xs badge badge-primary">
+                        {record.totalQuestions}个问题
+                      </span>
+                    )}
                   </div>
                   </div>
                 </div>

@@ -201,6 +201,20 @@ async function executeTests(
       
       // Call API
       const result = await callAgentAPI(agent.apiKey, agent.region, question);
+      // Track usage (matching old Python version)
+      let questionTokens = 0;
+      let questionCost = 0;
+      if (result.success && result.usage) {
+        if (result.usage.tokens) {
+          questionTokens = result.usage.tokens.total_tokens || 0;
+          totalTokens += questionTokens;
+        }
+        if (result.usage.credits) {
+          questionCost = result.usage.credits.total_credits || 0;
+          totalCost += questionCost;
+        }
+      }
+
       const resultData = {
         question,
         success: result.success,
@@ -211,18 +225,10 @@ async function executeTests(
         messageId: result.messageId || '',
         timestamp: new Date().toISOString(),
         referenceOutput: i < referenceOutputs.length ? referenceOutputs[i] : '',  // Add reference output
+        tokens: questionTokens,  // Add token count for this question
+        cost: questionCost,  // Add cost for this question
       };
       results.push(resultData);
-
-      // Track usage (matching old Python version)
-      if (result.success && result.usage) {
-        if (result.usage.tokens) {
-          totalTokens += result.usage.tokens.total_tokens || 0;
-        }
-        if (result.usage.credits) {
-          totalCost += result.usage.credits.total_credits || 0;
-        }
-      }
 
       // Rate limiting
       if (i < questions.length - 1) {

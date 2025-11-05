@@ -22,11 +22,6 @@ import {
   ResponsiveContainer,
   LineChart,
   Line,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-  Radar,
 } from 'recharts'
 
 export function ComparePage() {
@@ -84,41 +79,15 @@ export function ComparePage() {
     name: `${h.agentName}\n(${h.agent?.region || 'N/A'})`,
     agentName: h.agentName,
     modelName: h.agent?.region || 'N/A',
-    successRate: h.successRate,
-    avgResponseTime: h.avgResponseTime || 0,
-    totalQuestions: h.totalQuestions,
-    passedCount: h.passedCount,
-    failedCount: h.failedCount,
-    durationSeconds: h.durationSeconds,
+    successRate: Number(h.successRate) || 0,
+    avgResponseTime: Number(h.avgResponseTime) || 0,
+    totalQuestions: h.totalQuestions || 0,
+    passedCount: h.passedCount || 0,
+    failedCount: h.failedCount || 0,
+    durationSeconds: h.durationSeconds || 0,
     totalTokens: (h.jsonData as any)?.totalTokens || 0,
     totalCost: (h.jsonData as any)?.totalCost || 0,
   }))
-
-  // 雷达图数据
-  const radarData = [
-    {
-      metric: '成功率',
-      ...Object.fromEntries(histories.map((h, i) => [`agent${i}`, h.successRate])),
-    },
-    {
-      metric: '响应速度',
-      ...Object.fromEntries(
-        histories.map((h, i) => [
-          `agent${i}`,
-          Math.max(0, 100 - ((h.avgResponseTime || 0) / 100)),
-        ])
-      ),
-    },
-    {
-      metric: '成本效益',
-      ...Object.fromEntries(
-        histories.map((h, i) => [
-          `agent${i}`,
-          Math.max(0, 100 - (((h.jsonData as any)?.totalCost || 0) * 100)),
-        ])
-      ),
-    },
-  ]
 
   const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
 
@@ -136,54 +105,14 @@ export function ComparePage() {
           <ChartBarIcon className="w-8 h-8 text-primary-500" />
           <h1 className="text-3xl font-bold text-text-primary">模型对比分析</h1>
         </div>
-        <div className="text-sm text-text-secondary">
-          对比 {histories.length} 个测试记录
+        <div className="text-right">
+          <div className="text-sm text-text-secondary">
+            对比 {histories.length} 个测试记录
+          </div>
+          <div className="text-xs text-text-tertiary">
+            {histories[0]?.totalQuestions || 0} 个相同问题
+          </div>
         </div>
-      </div>
-
-      {/* 概览卡片 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {histories.map((history, index) => (
-          <motion.div
-            key={history.id}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.1 }}
-            className="glass-card p-6"
-            style={{ borderTop: `4px solid ${colors[index % colors.length]}` }}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <CpuChipIcon className="w-8 h-8" style={{ color: colors[index % colors.length] }} />
-              <span className="text-xs text-text-tertiary">
-                {new Date(history.testDate).toLocaleDateString('zh-CN')}
-              </span>
-            </div>
-            <h3 className="font-bold text-lg text-text-primary mb-1">{history.agentName}</h3>
-            <p className="text-sm text-text-secondary mb-4">
-              区域: {history.agent?.region || 'N/A'}
-            </p>
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-text-secondary">成功率:</span>
-                <span className="font-semibold text-text-primary">
-                  {history.successRate.toFixed(1)}%
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-text-secondary">平均耗时:</span>
-                <span className="font-semibold text-text-primary">
-                  {history.avgResponseTime?.toFixed(0) || 0}ms
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-text-secondary">Token:</span>
-                <span className="font-semibold text-text-primary">
-                  {((history.jsonData as any)?.totalTokens || 0).toLocaleString()}
-                </span>
-              </div>
-            </div>
-          </motion.div>
-        ))}
       </div>
 
       {/* 成功率对比 */}
@@ -246,32 +175,102 @@ export function ComparePage() {
         </ResponsiveContainer>
       </div>
 
-      {/* 综合评分雷达图 */}
+      {/* 问题级别对比 */}
       <div className="glass-card p-6">
-        <h2 className="text-xl font-bold text-text-primary mb-4">综合性能雷达图</h2>
-        <ResponsiveContainer width="100%" height={400}>
-          <RadarChart data={radarData}>
-            <PolarGrid />
-            <PolarAngleAxis dataKey="metric" />
-            <PolarRadiusAxis domain={[0, 100]} />
-            {histories.map((h, i) => (
-              <Radar
-                key={i}
-                name={h.agentName}
-                dataKey={`agent${i}`}
-                stroke={colors[i % colors.length]}
-                fill={colors[i % colors.length]}
-                fillOpacity={0.3}
-              />
-            ))}
-            <Legend />
-          </RadarChart>
-        </ResponsiveContainer>
+        <h2 className="text-xl font-bold text-text-primary mb-4">问题回复对比</h2>
+        <p className="text-sm text-text-secondary mb-4">
+          对比不同Agent对相同问题的回复内容
+        </p>
+        
+        {(() => {
+          // 获取第一个测试的问题列表作为基准
+          const baseResults = (histories[0]?.jsonData as any)?.results || []
+          
+          return (
+            <div className="space-y-6">
+              {baseResults.map((baseResult: any, qIndex: number) => (
+                <div key={qIndex} className="border border-gray-200 rounded-lg p-4">
+                  <div className="mb-4 pb-3 border-b border-gray-200">
+                    <h3 className="font-semibold text-text-primary mb-2">
+                      问题 {qIndex + 1}
+                    </h3>
+                    <p className="text-sm text-text-secondary">{baseResult.question}</p>
+                    {baseResult.referenceOutput && (
+                      <div className="mt-2 p-2 bg-blue-50 rounded">
+                        <p className="text-xs font-semibold text-blue-700 mb-1">参考答案:</p>
+                        <p className="text-xs text-blue-600">{baseResult.referenceOutput}</p>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="grid grid-cols-1 gap-4">
+                    {histories.map((history, hIndex) => {
+                      const result = ((history.jsonData as any)?.results || [])[qIndex]
+                      if (!result) return null
+                      
+                      return (
+                        <div 
+                          key={history.id}
+                          className="p-4 rounded-lg border-2"
+                          style={{ borderColor: colors[hIndex % colors.length] }}
+                        >
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center space-x-2">
+                              <div 
+                                className="w-3 h-3 rounded-full"
+                                style={{ backgroundColor: colors[hIndex % colors.length] }}
+                              />
+                              <span className="font-semibold text-text-primary">
+                                {history.agentName}
+                              </span>
+                              {history.agent?.region && (
+                                <span className="text-xs text-text-tertiary">
+                                  ({history.agent.region})
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center space-x-4 text-xs">
+                              <span className={result.success ? 'text-success' : 'text-error'}>
+                                {result.success ? '✓ 成功' : '✗ 失败'}
+                              </span>
+                              <span className="text-text-tertiary">
+                                {result.responseTime}ms
+                              </span>
+                            </div>
+                          </div>
+                          
+                          <div className="mt-2">
+                            <p className="text-xs font-semibold text-gray-700 mb-1">Agent回复:</p>
+                            {result.success ? (
+                              <div className="text-sm text-text-primary whitespace-pre-wrap bg-gray-50 p-3 rounded">
+                                {result.response}
+                              </div>
+                            ) : (
+                              <div className="text-sm text-error bg-red-50 p-3 rounded">
+                                错误: {result.error}
+                              </div>
+                            )}
+                          </div>
+                          
+                          {result.tokens && (
+                            <div className="mt-2 text-xs text-text-tertiary">
+                              Token消耗: {result.tokens}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        })()}
       </div>
 
       {/* 详细数据表格 */}
       <div className="glass-card p-6">
-        <h2 className="text-xl font-bold text-text-primary mb-4">详细数据对比</h2>
+        <h2 className="text-xl font-bold text-text-primary mb-4">统计数据对比</h2>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
@@ -301,7 +300,7 @@ export function ComparePage() {
                 <td className="py-3 px-4 text-text-secondary">总问题数</td>
                 {histories.map((h, i) => (
                   <td key={i} className="py-3 px-4 text-text-primary">
-                    {h.totalQuestions}
+                    {h.totalQuestions || 0}
                   </td>
                 ))}
               </tr>
@@ -309,7 +308,7 @@ export function ComparePage() {
                 <td className="py-3 px-4 text-text-secondary">成功数</td>
                 {histories.map((h, i) => (
                   <td key={i} className="py-3 px-4 text-success font-semibold">
-                    {h.passedCount}
+                    {h.passedCount || 0}
                   </td>
                 ))}
               </tr>
@@ -317,7 +316,7 @@ export function ComparePage() {
                 <td className="py-3 px-4 text-text-secondary">失败数</td>
                 {histories.map((h, i) => (
                   <td key={i} className="py-3 px-4 text-error font-semibold">
-                    {h.failedCount}
+                    {h.failedCount || 0}
                   </td>
                 ))}
               </tr>
@@ -325,7 +324,7 @@ export function ComparePage() {
                 <td className="py-3 px-4 text-text-secondary">成功率</td>
                 {histories.map((h, i) => (
                   <td key={i} className="py-3 px-4 text-text-primary font-semibold">
-                    {h.successRate.toFixed(2)}%
+                    {(Number(h.successRate) || 0).toFixed(2)}%
                   </td>
                 ))}
               </tr>
@@ -333,7 +332,7 @@ export function ComparePage() {
                 <td className="py-3 px-4 text-text-secondary">总耗时</td>
                 {histories.map((h, i) => (
                   <td key={i} className="py-3 px-4 text-text-primary">
-                    {h.durationSeconds}s
+                    {h.durationSeconds || 0}s
                   </td>
                 ))}
               </tr>
@@ -341,7 +340,7 @@ export function ComparePage() {
                 <td className="py-3 px-4 text-text-secondary">平均响应时间</td>
                 {histories.map((h, i) => (
                   <td key={i} className="py-3 px-4 text-text-primary">
-                    {h.avgResponseTime?.toFixed(0) || 0}ms
+                    {(Number(h.avgResponseTime) || 0).toFixed(0)}ms
                   </td>
                 ))}
               </tr>

@@ -21,9 +21,11 @@ export function Layout({ children }: LayoutProps) {
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-primary-400 to-primary-600 rounded-lg flex items-center justify-center shadow-md">
-                <BeakerIcon className="w-6 h-6 text-white" />
-              </div>
+              <img 
+                src="/logo.png" 
+                alt="Logo" 
+                className="h-10 w-auto object-contain"
+              />
               <span className="text-xl font-semibold text-text-primary">
                 测试平台
               </span>
