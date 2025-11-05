@@ -22,6 +22,7 @@ import { api, testsApi } from '../lib/api'
 interface Agent {
   id: number
   name: string
+  modelName?: string
   region: string
   apiKey: string
   status: string
@@ -247,8 +248,8 @@ export function TestPage() {
                     {filteredAgents.map((agent) => (
                       <motion.div
                         key={agent.id}
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
+                        whileHover={{ scale: 1.01 }}
+                        whileTap={{ scale: 0.99 }}
                         onClick={() => setSelectedAgent(agent)}
                         className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
                           selectedAgent?.id === agent.id
@@ -258,8 +259,14 @@ export function TestPage() {
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex-1">
-                            <div className="flex items-center space-x-3">
+                            <div className="flex items-center space-x-2 flex-wrap">
                               <h3 className="font-semibold text-text-primary">{agent.name}</h3>
+                              {agent.modelName && (
+                                <span className="px-2 py-1 text-xs rounded-full bg-purple-100 text-purple-700 flex items-center space-x-1">
+                                  <CpuChipIcon className="w-3 h-3" />
+                                  <span>{agent.modelName}</span>
+                                </span>
+                              )}
                               <span
                                 className={`px-2 py-1 text-xs rounded-full ${
                                   agent.region === 'SG'

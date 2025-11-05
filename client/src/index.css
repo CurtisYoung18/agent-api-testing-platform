@@ -46,6 +46,14 @@
     @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
   }
 
+  .badge-primary {
+    @apply bg-primary-100 text-primary-700;
+  }
+
+  .badge-secondary {
+    @apply bg-purple-100 text-purple-700;
+  }
+
   .badge-success {
     @apply bg-success-light/20 text-success-dark;
   }
