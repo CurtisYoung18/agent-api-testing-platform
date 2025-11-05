@@ -22,11 +22,12 @@
   "license": "MIT",
   "dependencies": {
     "@prisma/client": "^6.2.0",
-    "@vercel/node": "^3.2.21"
+    "@types/formidable": "^3.4.6",
+    "@vercel/node": "^3.2.21",
+    "formidable": "^3.5.4"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
     "prisma": "^6.2.0"
   }
 }
-

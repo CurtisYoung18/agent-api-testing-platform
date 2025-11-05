@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useDropzone } from 'react-dropzone'
+import { useNavigate } from 'react-router-dom'
 import { 
   BeakerIcon, 
   FolderOpenIcon,
@@ -16,7 +17,7 @@ import {
   ArrowDownTrayIcon,
   InformationCircleIcon,
 } from '@heroicons/react/24/outline'
-import { api } from '../lib/api'
+import { api, testsApi } from '../lib/api'
 
 interface Agent {
   id: number
@@ -28,12 +29,14 @@ interface Agent {
 }
 
 export function TestPage() {
+  const navigate = useNavigate()
   const [step, setStep] = useState(1)
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null)
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [executionMode, setExecutionMode] = useState<'parallel' | 'sequential'>('parallel')
   const [rpm, setRpm] = useState(60)
+  const [testError, setTestError] = useState('')
 
   // Fetch agents
   const { data: agents = [], isLoading } = useQuery({
@@ -41,6 +44,20 @@ export function TestPage() {
     queryFn: async () => {
       const response = await api.get('/agents')
       return response.data as Agent[]
+    },
+  })
+
+  // Create test mutation
+  const createTestMutation = useMutation({
+    mutationFn: async (formData: FormData) => {
+      return testsApi.create(formData)
+    },
+    onSuccess: () => {
+      // Navigate to history page after successful test creation
+      navigate('/history')
+    },
+    onError: (error: any) => {
+      setTestError(error.response?.data?.error || '测试创建失败，请重试')
     },
   })
 
@@ -93,13 +110,20 @@ export function TestPage() {
   }
 
   const handleStartTest = () => {
-    console.log('Starting test with:', {
-      agent: selectedAgent,
-      file: uploadedFile,
-      executionMode,
-      rpm,
-    })
-    // TODO: Implement test execution
+    if (!selectedAgent || !uploadedFile) {
+      setTestError('请确保已选择 Agent 和上传文件')
+      return
+    }
+
+    setTestError('')
+    
+    const formData = new FormData()
+    formData.append('agentId', selectedAgent.id.toString())
+    formData.append('file', uploadedFile)
+    formData.append('executionMode', executionMode)
+    formData.append('rpm', rpm.toString())
+
+    createTestMutation.mutate(formData)
   }
 
   return (
@@ -468,14 +492,25 @@ export function TestPage() {
                   </div>
                 </div>
 
+                {testError && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 max-w-md mx-auto"
+                  >
+                    <p className="text-sm text-error">{testError}</p>
+                  </motion.div>
+                )}
+
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   onClick={handleStartTest}
-                  className="btn-primary text-lg px-10 py-4 flex items-center space-x-3 mx-auto mt-8"
+                  disabled={createTestMutation.isPending}
+                  className="btn-primary text-lg px-10 py-4 flex items-center space-x-3 mx-auto mt-8 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <BeakerIcon className="w-6 h-6" />
-                  <span>开始测试</span>
+                  <span>{createTestMutation.isPending ? '提交中...' : '开始测试'}</span>
                 </motion.button>
               </div>
             )}
