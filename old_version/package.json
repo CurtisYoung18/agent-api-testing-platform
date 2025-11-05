@@ -1,0 +1,32 @@
+{
+  "name": "agent-api-testing-platform",
+  "version": "2.0.0",
+  "description": "AI Agent API Testing and Evaluation Platform",
+  "type": "module",
+  "scripts": {
+    "dev": "cd client && npm run dev",
+    "build": "cd client && npm run build",
+    "db:push": "npx prisma db push",
+    "db:studio": "npx prisma studio",
+    "setup": "npm install && cd client && npm install",
+    "postinstall": "npx prisma generate"
+  },
+  "keywords": [
+    "agent",
+    "api",
+    "testing",
+    "react",
+    "nodejs"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@prisma/client": "^6.2.0",
+    "@vercel/node": "^3.2.21"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "prisma": "^6.2.0"
+  }
+}
+
