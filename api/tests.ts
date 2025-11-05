@@ -14,23 +14,34 @@ async function getPrismaClient() {
   return prisma;
 }
 
-// Parse Excel file and extract test questions
-async function parseExcelFile(filePath: string): Promise<string[]> {
+// Parse Excel file and extract test questions with optional reference outputs
+async function parseExcelFile(filePath: string): Promise<{ questions: string[]; referenceOutputs: string[] }> {
   const fileBuffer = await fs.readFile(filePath);
   const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
   const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
   const data = XLSX.utils.sheet_to_json(firstSheet);
 
-  // Extract 'input' column (matching old Python version)
+  // Extract 'input' column and optional 'reference_output' column (matching old Python version)
   const questions: string[] = [];
+  const referenceOutputs: string[] = [];
+  
   for (const row of data) {
     const input = (row as any).input || (row as any).Input || (row as any).INPUT;
     if (input && typeof input === 'string' && input.trim()) {
       questions.push(input.trim());
+      
+      // Read reference_output if exists (matching Python version)
+      const refOutput = (row as any).reference_output || (row as any).Reference_Output || (row as any).REFERENCE_OUTPUT || '';
+      referenceOutputs.push(typeof refOutput === 'string' ? refOutput.trim() : '');
     }
   }
 
-  return questions;
+  // Ensure referenceOutputs has the same length as questions
+  while (referenceOutputs.length < questions.length) {
+    referenceOutputs.push('');
+  }
+
+  return { questions, referenceOutputs };
 }
 
 // Call Agent API using GPTBots Conversation API (matching old Python version)
@@ -162,6 +173,7 @@ async function callAgentAPI(apiKey: string, region: string, question: string): P
 async function executeTests(
   agent: any,
   questions: string[],
+  referenceOutputs: string[],
   executionMode: string,
   rpm: number
 ): Promise<{
@@ -198,6 +210,7 @@ async function executeTests(
         conversationId: result.conversationId || '',
         messageId: result.messageId || '',
         timestamp: new Date().toISOString(),
+        referenceOutput: i < referenceOutputs.length ? referenceOutputs[i] : '',  // Add reference output
       };
       results.push(resultData);
 
@@ -231,6 +244,7 @@ async function executeTests(
         conversationId: result.conversationId || '',
         messageId: result.messageId || '',
         timestamp: new Date().toISOString(),
+        referenceOutput: i < referenceOutputs.length ? referenceOutputs[i] : '',  // Add reference output
       };
       results.push(resultData);
 
@@ -298,11 +312,12 @@ function generateExcelReport(testData: any): Buffer {
 
   // Results sheet (matching Python version)
   const resultsData = [
-    ['序号', '问题', 'Agent回复', '测试状态', '错误信息', '测试时间', '对话ID', '消息ID', '响应时间(ms)'],
+    ['序号', '问题', 'Agent回复', '参考答案', '测试状态', '错误信息', '测试时间', '对话ID', '消息ID', '响应时间(ms)'],
     ...testData.jsonData.results.map((r: any, i: number) => [
       i + 1,
       r.question,
       r.response || '',
+      r.referenceOutput || '',  // Include reference output
       r.success ? '成功' : '失败',
       r.error || '',
       r.timestamp ? new Date(r.timestamp).toLocaleString('zh-CN') : '',
@@ -369,6 +384,12 @@ function generateMarkdownReport(testData: any): string {
     md += `### ${status} 问题 ${i + 1}\n\n`;
     md += `**问题**: ${r.question}\n`;
     md += `**测试时间**: ${r.timestamp ? new Date(r.timestamp).toLocaleString('zh-CN') : '未知'}\n\n`;
+    
+    // Display reference output if exists (matching Python version)
+    if (r.referenceOutput && r.referenceOutput.trim()) {
+      md += `**📋 参考答案**:\n\n`;
+      md += `${r.referenceOutput}\n\n`;
+    }
     
     if (r.success) {
       const processedResponse = processImagesInText(r.response || '');
@@ -438,14 +459,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // Parse Excel file
-      const questions = await parseExcelFile(file.filepath);
+      const { questions, referenceOutputs } = await parseExcelFile(file.filepath);
 
       if (questions.length === 0) {
         return res.status(400).json({ error: 'Excel文件中未找到有效的测试问题（请确保有"input"列）' });
       }
 
       // Execute tests
-      const testResults = await executeTests(agent, questions, executionMode, rpm);
+      const testResults = await executeTests(agent, questions, referenceOutputs, executionMode, rpm);
 
       const testData = {
         agentName: agent.name,
