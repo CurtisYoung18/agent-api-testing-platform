@@ -436,105 +436,103 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: '方法不允许' });
   }
-    try {
-      const prismaClient = await getPrismaClient();
+
+  try {
+    const prismaClient = await getPrismaClient();
 
       // Parse form data
-      const form = formidable({});
-      const [fields, files] = await form.parse(req);
+    const form = formidable({});
+    const [fields, files] = await form.parse(req);
 
-      const agentId = fields.agentId?.[0];
-      const executionMode = (fields.executionMode?.[0] || 'sequential') as string;
-      const rpm = parseInt(fields.rpm?.[0] || '60', 10);
-      const file = files.file?.[0];
+    const agentId = fields.agentId?.[0];
+    const executionMode = (fields.executionMode?.[0] || 'sequential') as string;
+    const rpm = parseInt(fields.rpm?.[0] || '60', 10);
+    const file = files.file?.[0];
 
-      if (!agentId || !file) {
-        return res.status(400).json({ error: '缺少必填字段' });
-      }
+    if (!agentId || !file) {
+      return res.status(400).json({ error: '缺少必填字段' });
+    }
 
-      // Get agent info
-      const agent = await prismaClient.agent.findUnique({
-        where: { id: parseInt(agentId, 10) },
-      });
+    // Get agent info
+    const agent = await prismaClient.agent.findUnique({
+      where: { id: parseInt(agentId, 10) },
+    });
 
-      if (!agent) {
-        return res.status(404).json({ error: 'Agent 不存在' });
-      }
+    if (!agent) {
+      return res.status(404).json({ error: 'Agent 不存在' });
+    }
 
-      // Parse Excel file
-      const { questions, referenceOutputs } = await parseExcelFile(file.filepath);
+    // Parse Excel file
+    const { questions, referenceOutputs } = await parseExcelFile(file.filepath);
 
-      if (questions.length === 0) {
-        return res.status(400).json({ error: 'Excel文件中未找到有效的测试问题（请确保有"input"列）' });
-      }
+    if (questions.length === 0) {
+      return res.status(400).json({ error: 'Excel文件中未找到有效的测试问题（请确保有"input"列）' });
+    }
 
-      // Execute tests
-      const testResults = await executeTests(agent, questions, referenceOutputs, executionMode, rpm);
+    // Execute tests
+    const testResults = await executeTests(agent, questions, referenceOutputs, executionMode, rpm);
 
-      const testData = {
+    const testData = {
+      agentName: agent.name,
+      testDate: new Date(),
+      ...testResults,
+      executionMode,
+      rpm,
+      jsonData: { results: testResults.results },
+    };
+
+    // Generate reports
+    const excelBuffer = generateExcelReport(testData);
+    const markdownContent = generateMarkdownReport(testData);
+
+    // Save to database
+    const testHistory = await prismaClient.testHistory.create({
+      data: {
+        agentId: agent.id,
         agentName: agent.name,
-        testDate: new Date(),
-        ...testResults,
+        totalQuestions: testResults.totalQuestions,
+        passedCount: testResults.passedCount,
+        failedCount: testResults.failedCount,
+        successRate: testResults.successRate,
+        durationSeconds: testResults.durationSeconds,
+        avgResponseTime: testResults.avgResponseTime,
         executionMode,
         rpm,
-        jsonData: { results: testResults.results },
-      };
-
-      // Generate reports
-      const excelBuffer = generateExcelReport(testData);
-      const markdownContent = generateMarkdownReport(testData);
-
-      // Save to database
-      const testHistory = await prismaClient.testHistory.create({
-        data: {
-          agentId: agent.id,
-          agentName: agent.name,
-          totalQuestions: testResults.totalQuestions,
-          passedCount: testResults.passedCount,
-          failedCount: testResults.failedCount,
-          successRate: testResults.successRate,
-          durationSeconds: testResults.durationSeconds,
-          avgResponseTime: testResults.avgResponseTime,
-          executionMode,
-          rpm,
-          excelBlob: excelBuffer,
-          markdownBlob: Buffer.from(markdownContent, 'utf-8'),
-          jsonData: {
-            status: 'completed',
-            results: testResults.results,
-            totalTokens: testResults.totalTokens,
-            totalCost: testResults.totalCost,
-          },
-        },
-      });
-
-      // Update agent's lastUsed timestamp
-      await prismaClient.agent.update({
-        where: { id: agent.id },
-        data: { lastUsed: new Date() },
-      });
-
-      return res.status(201).json({
-        id: testHistory.id,
-        message: '测试执行完成',
-        summary: {
-          totalQuestions: testResults.totalQuestions,
-          passedCount: testResults.passedCount,
-          failedCount: testResults.failedCount,
-          successRate: testResults.successRate.toFixed(2),
-          durationSeconds: testResults.durationSeconds,
+        excelBlob: excelBuffer,
+        markdownBlob: Buffer.from(markdownContent, 'utf-8'),
+        jsonData: {
+          status: 'completed',
+          results: testResults.results,
           totalTokens: testResults.totalTokens,
-          totalCost: testResults.totalCost.toFixed(4),
+          totalCost: testResults.totalCost,
         },
-      });
-    } catch (error: any) {
-      console.error('Tests API Error:', error);
-      return res.status(500).json({
-        error: '服务器错误',
-        message: error.message,
-      });
-    }
-  }
+      },
+    });
 
-  return res.status(405).json({ error: '方法不允许' });
+    // Update agent's lastUsed timestamp
+    await prismaClient.agent.update({
+      where: { id: agent.id },
+      data: { lastUsed: new Date() },
+    });
+
+    return res.status(201).json({
+      id: testHistory.id,
+      message: '测试执行完成',
+      summary: {
+        totalQuestions: testResults.totalQuestions,
+        passedCount: testResults.passedCount,
+        failedCount: testResults.failedCount,
+        successRate: testResults.successRate.toFixed(2),
+        durationSeconds: testResults.durationSeconds,
+        totalTokens: testResults.totalTokens,
+        totalCost: testResults.totalCost.toFixed(4),
+      },
+    });
+  } catch (error: any) {
+    console.error('Tests API Error:', error);
+    return res.status(500).json({
+      error: '服务器错误',
+      message: error.message,
+    });
+  }
 }
