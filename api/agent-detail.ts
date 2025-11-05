@@ -57,6 +57,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'PUT') {
       const { name, modelName, region, apiKey, status } = req.body;
 
+      console.log('Update agent request:', { agentId, name, modelName, region, status });
+
       const updateData: any = {};
       if (name) updateData.name = name;
       if (modelName !== undefined) updateData.modelName = modelName || null;
@@ -68,11 +70,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       if (apiKey) updateData.apiKey = apiKey;
       if (status) updateData.status = status;
+      updateData.updatedAt = new Date();
+
+      console.log('Update data:', updateData);
 
       const agent = await prismaClient.agent.update({
         where: { id: agentId },
         data: updateData,
       });
+
+      console.log('Updated agent:', { id: agent.id, name: agent.name, modelName: agent.modelName });
 
       return res.json({
         ...agent,

@@ -13,19 +13,30 @@ async function getPrismaClient() {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
-  if (req.method !== 'POST') {
+  if (req.method !== 'POST' && req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
     const prismaClient = await getPrismaClient();
+
+    console.log('Starting migration...');
+
+    // Check if column exists
+    const columnCheck = await prismaClient.$queryRaw`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'agents' AND column_name = 'model_name'
+    `;
+
+    console.log('Column check result:', columnCheck);
 
     // Execute raw SQL to add model_name column if it doesn't exist
     await prismaClient.$executeRaw`
@@ -40,15 +51,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       END $$;
     `;
 
+    // Verify the column was added
+    const verifyCheck = await prismaClient.$queryRaw`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'agents' AND column_name = 'model_name'
+    `;
+
+    console.log('Verification result:', verifyCheck);
+
     return res.json({ 
       success: true, 
-      message: 'Migration completed successfully' 
+      message: 'Migration completed successfully',
+      columnExists: Array.isArray(verifyCheck) && verifyCheck.length > 0
     });
   } catch (error: any) {
     console.error('Migration Error:', error);
     return res.status(500).json({ 
       error: '迁移失败',
-      message: error.message 
+      message: error.message,
+      stack: error.stack
     });
   }
 }

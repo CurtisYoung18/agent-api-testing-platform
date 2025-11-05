@@ -248,13 +248,13 @@ export function TestPage() {
                     {filteredAgents.map((agent) => (
                       <motion.div
                         key={agent.id}
-                        whileHover={{ scale: 1.01 }}
-                        whileTap={{ scale: 0.99 }}
+                        whileHover={{ y: -2 }}
+                        whileTap={{ y: 0 }}
                         onClick={() => setSelectedAgent(agent)}
                         className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
                           selectedAgent?.id === agent.id
                             ? 'border-primary-400 bg-primary-50/50 shadow-md'
-                            : 'border-primary-100 hover:border-primary-300 hover:bg-primary-50/30'
+                            : 'border-primary-100 hover:border-primary-300 hover:bg-primary-50/30 hover:shadow-sm'
                         }`}
                       >
                         <div className="flex items-center justify-between">

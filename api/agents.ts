@@ -41,6 +41,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'POST') {
       const { name, modelName, region, apiKey } = req.body;
 
+      console.log('Create agent request:', { name, modelName, region });
+
       if (!name || !region || !apiKey) {
         return res.status(400).json({ error: '缺少必填字段' });
       }
@@ -58,6 +60,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           status: 'active' 
         },
       });
+
+      console.log('Created agent:', { id: agent.id, name: agent.name, modelName: agent.modelName });
 
       return res.status(201).json({
         ...agent,
