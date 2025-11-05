@@ -1,16 +1,13 @@
-import { useState, useEffect } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { motion } from 'framer-motion'
 import {
   ArrowLeftIcon,
   ChartBarIcon,
   ClockIcon,
   CpuChipIcon,
   CheckCircleIcon,
-  XCircleIcon,
 } from '@heroicons/react/24/outline'
-import { historyApi, TestHistory } from '../lib/api'
+import { historyApi } from '../lib/api'
 import {
   BarChart,
   Bar,

@@ -87,11 +87,6 @@ export function HistoryPage() {
     }
   }
 
-  const clearSelection = () => {
-    setSelectedForCompare([])
-    setIsCompareMode(false)
-  }
-
   const toggleCompareMode = () => {
     setIsCompareMode(!isCompareMode)
     setSelectedForCompare([])
