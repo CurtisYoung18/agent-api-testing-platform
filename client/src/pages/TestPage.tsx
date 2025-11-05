@@ -37,10 +37,13 @@ export function TestPage() {
   const [executionMode, setExecutionMode] = useState<'parallel' | 'sequential'>('parallel')
   const [rpm, setRpm] = useState(60)
   const [testError, setTestError] = useState('')
-  const [isTestingLive, setIsTestingLive] = useState(false)
-  const [liveResults, setLiveResults] = useState<any[]>([])
-  const [liveStats, setLiveStats] = useState({ current: 0, total: 0, passedCount: 0, failedCount: 0, successRate: '0.00' })
-  const [currentQuestion, setCurrentQuestion] = useState('')
+  // Real-time testing states (prepared for SSE implementation)
+  // const [isTestingLive, setIsTestingLive] = useState(false)
+  // const [liveResults, setLiveResults] = useState<any[]>([])
+  // const [liveStats, setLiveStats] = useState({ current: 0, total: 0, passedCount: 0, failedCount: 0, successRate: '0.00' })
+  // const [currentQuestion, setCurrentQuestion] = useState('')
+  const [previewQuestions, setPreviewQuestions] = useState<string[]>([])
+  const [showPreview, setShowPreview] = useState(false)
 
   // Fetch agents
   const { data: agents = [], isLoading } = useQuery({
@@ -71,10 +74,34 @@ export function TestPage() {
     agent.region.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
-  // File upload handler
-  const onDrop = useCallback((acceptedFiles: File[]) => {
+  // File upload handler with preview
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
-      setUploadedFile(acceptedFiles[0])
+      const file = acceptedFiles[0]
+      setUploadedFile(file)
+      
+      // Parse and preview questions from Excel file
+      try {
+        const XLSX = await import('xlsx')
+        const data = await file.arrayBuffer()
+        const workbook = XLSX.read(data, { type: 'array' })
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
+        const jsonData = XLSX.utils.sheet_to_json(firstSheet)
+        
+        const questions: string[] = []
+        for (const row of jsonData as any[]) {
+          const input = row.input || row.Input || row.INPUT
+          if (input && typeof input === 'string' && input.trim()) {
+            questions.push(input.trim())
+          }
+        }
+        
+        setPreviewQuestions(questions)
+        setShowPreview(false)
+      } catch (error) {
+        console.error('Error parsing Excel:', error)
+        setPreviewQuestions([])
+      }
     }
   }, [])
 
