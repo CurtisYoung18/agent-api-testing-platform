@@ -3,22 +3,16 @@ import formidable from 'formidable';
 import XLSX from 'xlsx';
 import fs from 'fs/promises';
 
-// Initialize Prisma Client lazily
-let prisma: any;
-
+// Initialize Prisma Client - create new instance for each request to avoid cache issues
 async function getPrismaClient() {
-  if (!prisma) {
-    const { PrismaClient } = await import('@prisma/client');
-    prisma = new PrismaClient({
-      // Disable prepared statements to avoid cache issues after schema changes
-      datasources: {
-        db: {
-          url: process.env.DATABASE_URL,
-        },
+  const { PrismaClient } = await import('@prisma/client');
+  return new PrismaClient({
+    datasources: {
+      db: {
+        url: process.env.DATABASE_URL,
       },
-    });
-  }
-  return prisma;
+    },
+  });
 }
 
 // Parse Excel file and extract test questions with optional reference outputs
@@ -454,8 +448,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log('=== Tests API Request Started ===');
     const prismaClient = await getPrismaClient();
 
+    try {
       // Parse form data
-    console.log('Parsing form data...');
+      console.log('Parsing form data...');
     const form = formidable({});
     const [fields, files] = await form.parse(req);
 
@@ -566,6 +561,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         totalCost: testResults.totalCost.toFixed(4),
       },
     });
+    } finally {
+      // Always disconnect Prisma client
+      await prismaClient.$disconnect();
+    }
   } catch (error: any) {
     console.error('=== Tests API Error ===');
     console.error('Error:', error);
