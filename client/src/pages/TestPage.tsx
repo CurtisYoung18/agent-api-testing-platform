@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useDropzone } from 'react-dropzone'
 import { useNavigate } from 'react-router-dom'
@@ -17,7 +17,7 @@ import {
   ArrowDownTrayIcon,
   InformationCircleIcon,
 } from '@heroicons/react/24/outline'
-import { api, testsApi } from '../lib/api'
+import { api } from '../lib/api'
 
 interface Agent {
   id: number
@@ -53,20 +53,6 @@ export function TestPage() {
     queryFn: async () => {
       const response = await api.get('/agents')
       return response.data as Agent[]
-    },
-  })
-
-  // Create test mutation
-  const createTestMutation = useMutation({
-    mutationFn: async (formData: FormData) => {
-      return testsApi.create(formData)
-    },
-    onSuccess: () => {
-      // Navigate to history page after successful test creation
-      navigate('/history')
-    },
-    onError: (error: any) => {
-      setTestError(error.response?.data?.error || '测试创建失败，请重试')
     },
   })
 
