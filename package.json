@@ -6,10 +6,7 @@
   "scripts": {
     "dev": "cd client && npm run dev",
     "build": "cd client && npm run build",
-    "db:push": "npx prisma db push",
-    "db:studio": "npx prisma studio",
-    "setup": "npm install && cd client && npm install",
-    "postinstall": "npx prisma generate"
+    "setup": "npm install && cd client && npm install"
   },
   "keywords": [
     "agent",
