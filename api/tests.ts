@@ -2,18 +2,13 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import formidable from 'formidable';
 import XLSX from 'xlsx';
 import fs from 'fs/promises';
+import { Pool } from 'pg';
 
-// Initialize Prisma Client - create new instance for each request to avoid cache issues
-async function getPrismaClient() {
-  const { PrismaClient } = await import('@prisma/client');
-  return new PrismaClient({
-    datasources: {
-      db: {
-        url: process.env.DATABASE_URL,
-      },
-    },
-  });
-}
+// Database connection pool
+const getPool = () => new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
 
 // Parse Excel file and extract test questions with optional reference outputs
 async function parseExcelFile(filePath: string): Promise<{ questions: string[]; referenceOutputs: string[] }> {
@@ -22,7 +17,6 @@ async function parseExcelFile(filePath: string): Promise<{ questions: string[]; 
   const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
   const data = XLSX.utils.sheet_to_json(firstSheet);
 
-  // Extract 'input' column and optional 'reference_output' column (matching old Python version)
   const questions: string[] = [];
   const referenceOutputs: string[] = [];
   
@@ -31,13 +25,11 @@ async function parseExcelFile(filePath: string): Promise<{ questions: string[]; 
     if (input && typeof input === 'string' && input.trim()) {
       questions.push(input.trim());
       
-      // Read reference_output if exists (matching Python version)
       const refOutput = (row as any).reference_output || (row as any).Reference_Output || (row as any).REFERENCE_OUTPUT || '';
       referenceOutputs.push(typeof refOutput === 'string' ? refOutput.trim() : '');
     }
   }
 
-  // Ensure referenceOutputs has the same length as questions
   while (referenceOutputs.length < questions.length) {
     referenceOutputs.push('');
   }
@@ -45,7 +37,7 @@ async function parseExcelFile(filePath: string): Promise<{ questions: string[]; 
   return { questions, referenceOutputs };
 }
 
-// Call Agent API using GPTBots Conversation API (matching old Python version)
+// Call Agent API
 async function callAgentAPI(apiKey: string, region: string, question: string): Promise<{ 
   success: boolean; 
   response?: string; 
@@ -58,26 +50,18 @@ async function callAgentAPI(apiKey: string, region: string, question: string): P
   const startTime = Date.now();
   
   try {
-    // Step 1: Create conversation_id
     const baseUrl = region === 'SG' 
-      ? 'https://api-sg.gptbots.ai' 
-      : region === 'CN'
-      ? 'https://api.gptbots.cn'
-      : 'https://api-cn.gptbots.ai';
+      ? 'https://api.gptbots.ai'
+      : 'https://api.gptbots.cn';
 
-    // Generate a unique user_id for this test session
-    const userId = `test_user_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-
-    // Create conversation
-    const conversationResponse = await fetch(`${baseUrl}/v1/conversation`, {
+    // Step 1: Create conversation
+    const conversationResponse = await fetch(`${baseUrl}/v2/conversation`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({
-        user_id: userId,
-      }),
+      body: JSON.stringify({}),
     });
 
     if (!conversationResponse.ok) {
@@ -100,22 +84,23 @@ async function callAgentAPI(apiKey: string, region: string, question: string): P
       };
     }
 
-    // Step 2: Send message (matching old Python version format)
+    // Step 2: Send message
     const messageResponse = await fetch(`${baseUrl}/v2/conversation/message`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         conversation_id: conversationId,
-        response_mode: 'blocking',
-        messages: [
-          {
-            role: 'user',
-            content: question  // Send as string, matching Python version
-          },
-        ],
+        inputs: [{
+          input_type: 'text',
+          content: { text: question },
+        }],
+        model_config: {
+          model: 'default',
+          temperature: 0.7,
+        },
       }),
     });
 
@@ -133,7 +118,6 @@ async function callAgentAPI(apiKey: string, region: string, question: string): P
 
     const messageData = await messageResponse.json();
 
-    // Extract text response from output (matching Python version)
     let responseText = '';
     if (messageData.output && Array.isArray(messageData.output) && messageData.output.length > 0) {
       const firstOutput = messageData.output[0];
@@ -158,7 +142,7 @@ async function callAgentAPI(apiKey: string, region: string, question: string): P
       responseTime,
       conversationId: conversationId,
       messageId: messageData.message_id,
-      usage: messageData.usage || null,  // Include usage data for cost tracking
+      usage: messageData.usage || null,
     };
 
   } catch (error: any) {
@@ -170,13 +154,14 @@ async function callAgentAPI(apiKey: string, region: string, question: string): P
   }
 }
 
-// Execute tests with rate limiting (matching old Python version behavior)
+// Execute tests with real-time updates
 async function executeTests(
   agent: any,
   questions: string[],
   referenceOutputs: string[],
   executionMode: string,
-  rpm: number
+  rpm: number,
+  onProgress?: (data: any) => void
 ): Promise<{
   results: any[];
   totalQuestions: number;
@@ -188,21 +173,32 @@ async function executeTests(
   totalTokens: number;
   totalCost: number;
 }> {
-  const startTime = Date.now();
   const results: any[] = [];
+  let passedCount = 0;
+  let failedCount = 0;
   let totalTokens = 0;
-  let totalCost = 0.0;
+  let totalCost = 0;
+  const startTime = Date.now();
 
-  const delayBetweenRequests = (60 * 1000) / rpm; // milliseconds between requests
+  const delayBetweenRequests = (60 / rpm) * 1000;
 
-  if (executionMode === 'parallel') {
-    // Parallel execution with rate limiting (batch processing)
+  if (executionMode === 'sequential') {
     for (let i = 0; i < questions.length; i++) {
       const question = questions[i];
       
-      // Call API
-      const result = await callAgentAPI(agent.apiKey, agent.region, question);
-      // Track usage (matching old Python version)
+      // 发送进度更新 - 开始测试
+      if (onProgress) {
+        onProgress({
+          type: 'progress',
+          current: i + 1,
+          total: questions.length,
+          question: question,
+          status: 'testing'
+        });
+      }
+      
+      const result = await callAgentAPI(agent.api_key, agent.region, question);
+      
       let questionTokens = 0;
       let questionCost = 0;
       if (result.success && result.usage) {
@@ -225,23 +221,62 @@ async function executeTests(
         conversationId: result.conversationId || '',
         messageId: result.messageId || '',
         timestamp: new Date().toISOString(),
-        referenceOutput: i < referenceOutputs.length ? referenceOutputs[i] : '',  // Add reference output
-        tokens: questionTokens,  // Add token count for this question
-        cost: questionCost,  // Add cost for this question
+        referenceOutput: i < referenceOutputs.length ? referenceOutputs[i] : '',
+        tokens: questionTokens,
+        cost: questionCost,
       };
       results.push(resultData);
 
-      // Rate limiting
+      if (result.success) {
+        passedCount++;
+      } else {
+        failedCount++;
+      }
+
+      // 发送进度更新 - 完成测试
+      if (onProgress) {
+        onProgress({
+          type: 'result',
+          current: i + 1,
+          total: questions.length,
+          question: question,
+          response: result.response || result.error,
+          success: result.success,
+          responseTime: result.responseTime,
+          tokens: questionTokens
+        });
+      }
+
       if (i < questions.length - 1) {
         await new Promise(resolve => setTimeout(resolve, delayBetweenRequests));
       }
     }
   } else {
-    // Sequential execution (matching old Python delay_seconds)
-    for (let i = 0; i < questions.length; i++) {
-      const question = questions[i];
-      const result = await callAgentAPI(agent.apiKey, agent.region, question);
+    // Parallel execution
+    const promises = questions.map(async (question, i) => {
+      if (onProgress) {
+        onProgress({
+          type: 'progress',
+          current: i + 1,
+          total: questions.length,
+          question: question,
+          status: 'testing'
+        });
+      }
+
+      const result = await callAgentAPI(agent.api_key, agent.region, question);
       
+      let questionTokens = 0;
+      let questionCost = 0;
+      if (result.success && result.usage) {
+        if (result.usage.tokens) {
+          questionTokens = result.usage.tokens.total_tokens || 0;
+        }
+        if (result.usage.credits) {
+          questionCost = result.usage.credits.total_credits || 0;
+        }
+      }
+
       const resultData = {
         question,
         success: result.success,
@@ -251,34 +286,44 @@ async function executeTests(
         conversationId: result.conversationId || '',
         messageId: result.messageId || '',
         timestamp: new Date().toISOString(),
-        referenceOutput: i < referenceOutputs.length ? referenceOutputs[i] : '',  // Add reference output
+        referenceOutput: i < referenceOutputs.length ? referenceOutputs[i] : '',
+        tokens: questionTokens,
+        cost: questionCost,
       };
-      results.push(resultData);
 
-      // Track usage
-      if (result.success && result.usage) {
-        if (result.usage.tokens) {
-          totalTokens += result.usage.tokens.total_tokens || 0;
-        }
-        if (result.usage.credits) {
-          totalCost += result.usage.credits.total_credits || 0;
-        }
+      if (onProgress) {
+        onProgress({
+          type: 'result',
+          current: i + 1,
+          total: questions.length,
+          question: question,
+          response: result.response || result.error,
+          success: result.success,
+          responseTime: result.responseTime,
+          tokens: questionTokens
+        });
       }
 
-      // Rate limiting delay (matching old Python delay_seconds)
-      if (i < questions.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, delayBetweenRequests));
+      return { result: resultData, tokens: questionTokens, cost: questionCost };
+    });
+
+    const allResults = await Promise.all(promises);
+    
+    allResults.forEach(({ result, tokens, cost }) => {
+      results.push(result);
+      if (result.success) {
+        passedCount++;
+      } else {
+        failedCount++;
       }
-    }
+      totalTokens += tokens;
+      totalCost += cost;
+    });
   }
 
   const totalDuration = Date.now() - startTime;
-  const passedCount = results.filter(r => r.success).length;
-  const failedCount = results.length - passedCount;
-  const successRate = results.length > 0 ? (passedCount / results.length) * 100 : 0;
-  const avgResponseTime = results.length > 0 
-    ? results.reduce((sum, r) => sum + (r.responseTime || 0), 0) / results.length 
-    : 0;
+  const successRate = (passedCount / questions.length) * 100;
+  const avgResponseTime = results.reduce((sum, r) => sum + r.responseTime, 0) / results.length;
 
   return {
     results,
@@ -293,145 +338,81 @@ async function executeTests(
   };
 }
 
-// Generate Excel report (matching old Python version format)
-function generateExcelReport(testData: any): Buffer {
-  const wb = XLSX.utils.book_new();
-  
-  // Summary sheet (matching Python version)
-  const summaryData = [
-    ['统计项', '值'],
-    ['Agent名称', testData.agentName],
-    ['测试时间', new Date(testData.testDate).toLocaleString('zh-CN')],
-    ['总测试数量', testData.totalQuestions],
-    ['成功数量', testData.passedCount],
-    ['失败数量', testData.failedCount],
-    ['成功率(%)', `${testData.successRate.toFixed(2)}%`],
-    ['总Token消耗', testData.totalTokens || 0],
-    ['总成本', testData.totalCost ? testData.totalCost.toFixed(4) : '0.0000'],
-    ['执行时长(秒)', testData.durationSeconds],
-    ['平均响应时间(ms)', testData.avgResponseTime],
-    ['执行模式', testData.executionMode === 'parallel' ? '并行' : '串行'],
-    ['RPM', testData.rpm],
-  ];
-  
-  const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
-  XLSX.utils.book_append_sheet(wb, summarySheet, '统计汇总');
+// Generate Excel report
+function generateExcelReport(data: any): Buffer {
+  const rows = data.results.map((r: any, index: number) => ({
+    '序号': index + 1,
+    '问题': r.question,
+    '参考答案': r.referenceOutput || '',
+    '实际输出': r.response || r.error,
+    '状态': r.success ? '成功' : '失败',
+    '响应时间(ms)': r.responseTime,
+    'Token消耗': r.tokens || 0,
+    '成本': r.cost || 0,
+    '时间戳': r.timestamp,
+  }));
 
-  // Results sheet (matching Python version)
-  const resultsData = [
-    ['序号', '问题', 'Agent回复', '参考答案', '测试状态', '错误信息', '测试时间', '对话ID', '消息ID', '响应时间(ms)'],
-    ...testData.jsonData.results.map((r: any, i: number) => [
-      i + 1,
-      r.question,
-      r.response || '',
-      r.referenceOutput || '',  // Include reference output
-      r.success ? '成功' : '失败',
-      r.error || '',
-      r.timestamp ? new Date(r.timestamp).toLocaleString('zh-CN') : '',
-      r.conversationId || '',
-      r.messageId || '',
-      r.responseTime,
-    ]),
-  ];
-  
-  const resultsSheet = XLSX.utils.aoa_to_sheet(resultsData);
-  XLSX.utils.book_append_sheet(wb, resultsSheet, '测试结果');
+  const summaryRow = {
+    '序号': '汇总',
+    '问题': `Agent: ${data.agentName}`,
+    '参考答案': `总问题数: ${data.totalQuestions}`,
+    '实际输出': `成功: ${data.passedCount}, 失败: ${data.failedCount}`,
+    '状态': `成功率: ${data.successRate.toFixed(2)}%`,
+    '响应时间(ms)': `平均: ${data.avgResponseTime}ms`,
+    'Token消耗': data.totalTokens,
+    '成本': data.totalCost.toFixed(4),
+    '时间戳': data.testDate.toISOString(),
+  };
 
-  return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  rows.unshift(summaryRow);
+
+  const worksheet = XLSX.utils.json_to_sheet(rows);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, '测试报告');
+
+  return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 }
 
-// Process images in text for Markdown (matching Python version)
-function processImagesInText(text: string): string {
-  let processed = text;
-  
-  // Convert HTML img tags to Markdown
-  processed = processed.replace(/<img[^>]*src=["']([^"']+)["'][^>]*>/g, '![图片]($1)');
-  
-  // Convert plain image URLs to Markdown
-  const imageUrlPattern = /(https?:\/\/[^\s]+\.(?:jpg|jpeg|png|gif|webp|svg)(?:\?[^\s]*)?)/g;
-  processed = processed.replace(imageUrlPattern, '![图片]($1)');
-  
-  return processed;
-}
+// Generate Markdown report
+function generateMarkdownReport(data: any): string {
+  let markdown = `# Agent API 测试报告\n\n`;
+  markdown += `**Agent名称**: ${data.agentName}\n`;
+  markdown += `**测试时间**: ${data.testDate.toISOString()}\n`;
+  markdown += `**执行模式**: ${data.executionMode === 'parallel' ? '并行' : '串行'}\n`;
+  markdown += `**RPM**: ${data.rpm}\n\n`;
 
-// Generate Markdown report (matching old Python version format)
-function generateMarkdownReport(testData: any): string {
-  const currentTime = new Date().toLocaleString('zh-CN');
-  
-  let md = `# 📊 Agent API 测试结果报告\n\n`;
-  md += `**报告生成时间**: ${currentTime}  \n`;
-  md += `**Agent名称**: ${testData.agentName}  \n`;
-  md += `**总测试数量**: ${testData.totalQuestions}  \n`;
-  md += `**成功数量**: ${testData.passedCount}  \n`;
-  md += `**失败数量**: ${testData.failedCount}  \n`;
-  md += `**成功率**: ${testData.successRate.toFixed(2)}%  \n\n`;
-  md += `---\n\n`;
-  
-  // Statistics summary (matching Python version)
-  md += `## 📈 统计汇总\n\n`;
-  md += `| 统计项 | 数值 |\n`;
-  md += `|--------|------|\n`;
-  md += `| 🎯 总测试数量 | ${testData.totalQuestions} |\n`;
-  md += `| ✅ 成功数量 | ${testData.passedCount} |\n`;
-  md += `| ❌ 失败数量 | ${testData.failedCount} |\n`;
-  md += `| 📊 成功率 | ${testData.successRate.toFixed(2)}% |\n`;
-  md += `| 🔧 总Token消耗 | ${(testData.totalTokens || 0).toLocaleString()} |\n`;
-  md += `| 💰 总成本 | ${testData.totalCost ? testData.totalCost.toFixed(4) : '0.0000'} |\n`;
-  md += `| ⏱️ 总耗时 | ${testData.durationSeconds}秒 |\n`;
-  md += `| ⚡ 平均响应时间 | ${testData.avgResponseTime}ms |\n`;
-  md += `| 🔄 执行模式 | ${testData.executionMode === 'parallel' ? '并行' : '串行'} |\n`;
-  md += `| 🚀 RPM | ${testData.rpm} |\n\n`;
-  md += `---\n\n`;
-  
-  // Detailed results (matching Python version)
-  md += `## 📋 详细测试结果\n\n`;
-  
-  testData.jsonData.results.forEach((r: any, i: number) => {
-    const status = r.success ? '✅ 成功' : '❌ 失败';
-    md += `### ${status} 问题 ${i + 1}\n\n`;
-    md += `**问题**: ${r.question}\n`;
-    md += `**测试时间**: ${r.timestamp ? new Date(r.timestamp).toLocaleString('zh-CN') : '未知'}\n\n`;
-    
-    // Display reference output if exists (matching Python version)
-    if (r.referenceOutput && r.referenceOutput.trim()) {
-      md += `**📋 参考答案**:\n\n`;
-      md += `${r.referenceOutput}\n\n`;
+  markdown += `## 测试汇总\n\n`;
+  markdown += `| 指标 | 值 |\n`;
+  markdown += `|------|----|\n`;
+  markdown += `| 总问题数 | ${data.totalQuestions} |\n`;
+  markdown += `| 成功数 | ${data.passedCount} |\n`;
+  markdown += `| 失败数 | ${data.failedCount} |\n`;
+  markdown += `| 成功率 | ${data.successRate.toFixed(2)}% |\n`;
+  markdown += `| 平均响应时间 | ${data.avgResponseTime}ms |\n`;
+  markdown += `| 总耗时 | ${data.durationSeconds}s |\n`;
+  markdown += `| Token消耗 | ${data.totalTokens} |\n`;
+  markdown += `| 总成本 | $${data.totalCost.toFixed(4)} |\n\n`;
+
+  markdown += `## 详细结果\n\n`;
+  data.results.forEach((r: any, index: number) => {
+    markdown += `### 问题 ${index + 1}\n\n`;
+    markdown += `**问题**: ${r.question}\n\n`;
+    if (r.referenceOutput) {
+      markdown += `**参考答案**: ${r.referenceOutput}\n\n`;
     }
-    
-    if (r.success) {
-      const processedResponse = processImagesInText(r.response || '');
-      md += `**🤖 Agent回复**:\n\n`;
-      md += `${processedResponse}\n\n`;
-    } else {
-      md += `**❌ 错误信息**: ${r.error}\n\n`;
+    markdown += `**实际输出**: ${r.response || r.error}\n\n`;
+    markdown += `**状态**: ${r.success ? '✅ 成功' : '❌ 失败'}\n\n`;
+    markdown += `**响应时间**: ${r.responseTime}ms\n\n`;
+    if (r.tokens) {
+      markdown += `**Token消耗**: ${r.tokens}\n\n`;
     }
-    
-    md += `---\n\n`;
+    markdown += `---\n\n`;
   });
-  
-  // Failure analysis (matching Python version)
-  const failedResults = testData.jsonData.results.filter((r: any) => !r.success);
-  if (failedResults.length > 0) {
-    md += `## ❌ 失败分析\n\n`;
-    md += `共有 **${failedResults.length}** 个测试失败:\n\n`;
-    
-    failedResults.forEach((r: any, i: number) => {
-      md += `**${i + 1}.** ${r.question.substring(0, 60)}${r.question.length > 60 ? '...' : ''}\n`;
-      md += `   - ❌ ${r.error}\n\n`;
-    });
-  }
-  
-  return md;
-}
 
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
+  return markdown;
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -444,13 +425,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: '方法不允许' });
   }
 
+  const pool = getPool();
+
   try {
     console.log('=== Tests API Request Started ===');
-    const prismaClient = await getPrismaClient();
 
-    try {
-      // Parse form data
-      console.log('Parsing form data...');
+    // Parse form data
+    console.log('Parsing form data...');
     const form = formidable({});
     const [fields, files] = await form.parse(req);
 
@@ -462,21 +443,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log('Request params:', { agentId, executionMode, rpm, hasFile: !!file });
 
     if (!agentId || !file) {
-      console.error('Missing required fields:', { agentId: !!agentId, file: !!file });
+      console.error('Missing required fields');
       return res.status(400).json({ error: '缺少必填字段' });
     }
 
     // Get agent info
     console.log('Fetching agent:', agentId);
-    const agent = await prismaClient.agent.findUnique({
-      where: { id: parseInt(agentId, 10) },
-    });
+    const agentResult = await pool.query(
+      'SELECT * FROM agents WHERE id = $1',
+      [parseInt(agentId, 10)]
+    );
 
-    if (!agent) {
+    if (agentResult.rows.length === 0) {
       console.error('Agent not found:', agentId);
       return res.status(404).json({ error: 'Agent 不存在' });
     }
 
+    const agent = agentResult.rows[0];
     console.log('Agent found:', { id: agent.id, name: agent.name, region: agent.region });
 
     // Parse Excel file
@@ -485,7 +468,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log('Excel parsed:', { questionCount: questions.length });
 
     if (questions.length === 0) {
-      return res.status(400).json({ error: 'Excel文件中未找到有效的测试问题（请确保有"input"列）' });
+      return res.status(400).json({ error: 'Excel文件中未找到有效的测试问题' });
     }
 
     // Execute tests
@@ -494,7 +477,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log('Test execution completed:', {
       totalQuestions: testResults.totalQuestions,
       passedCount: testResults.passedCount,
-      failedCount: testResults.failedCount,
       successRate: testResults.successRate
     });
 
@@ -504,52 +486,56 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ...testResults,
       executionMode,
       rpm,
-      jsonData: { results: testResults.results },
     };
 
     // Generate reports
     console.log('Generating reports...');
     const excelBuffer = generateExcelReport(testData);
     const markdownContent = generateMarkdownReport(testData);
-    console.log('Reports generated:', { excelSize: excelBuffer.length, markdownSize: markdownContent.length });
 
     // Save to database
     console.log('Saving to database...');
-    const testHistory = await prismaClient.testHistory.create({
-      data: {
-        agentId: agent.id,
-        agentName: agent.name,
-        totalQuestions: testResults.totalQuestions,
-        passedCount: testResults.passedCount,
-        failedCount: testResults.failedCount,
-        successRate: testResults.successRate,
-        durationSeconds: testResults.durationSeconds,
-        avgResponseTime: testResults.avgResponseTime,
+    const insertResult = await pool.query(
+      `INSERT INTO test_history (
+        agent_id, agent_name, total_questions, passed_count, failed_count,
+        success_rate, duration_seconds, avg_response_time, execution_mode, rpm,
+        excel_blob, markdown_blob, json_data
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      RETURNING id`,
+      [
+        agent.id,
+        agent.name,
+        testResults.totalQuestions,
+        testResults.passedCount,
+        testResults.failedCount,
+        testResults.successRate,
+        testResults.durationSeconds,
+        testResults.avgResponseTime,
         executionMode,
         rpm,
-        excelBlob: excelBuffer,
-        markdownBlob: Buffer.from(markdownContent, 'utf-8'),
-        jsonData: {
+        excelBuffer,
+        Buffer.from(markdownContent, 'utf-8'),
+        JSON.stringify({
           status: 'completed',
           results: testResults.results,
           totalTokens: testResults.totalTokens,
           totalCost: testResults.totalCost,
-        },
-      },
-    });
+        })
+      ]
+    );
 
-    console.log('Test history saved:', { id: testHistory.id });
+    const testHistoryId = insertResult.rows[0].id;
+    console.log('Test history saved:', { id: testHistoryId });
 
-    // Update agent's lastUsed timestamp
-    console.log('Updating agent lastUsed...');
-    await prismaClient.agent.update({
-      where: { id: agent.id },
-      data: { lastUsed: new Date() },
-    });
+    // Update agent last used
+    await pool.query(
+      'UPDATE agents SET last_used = NOW() WHERE id = $1',
+      [agent.id]
+    );
 
-    console.log('=== Tests API Request Completed Successfully ===');
+    console.log('=== Tests API Request Completed ===');
     return res.status(201).json({
-      id: testHistory.id,
+      id: testHistoryId,
       message: '测试执行完成',
       summary: {
         totalQuestions: testResults.totalQuestions,
@@ -561,23 +547,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         totalCost: testResults.totalCost.toFixed(4),
       },
     });
-    } finally {
-      // Always disconnect Prisma client
-      await prismaClient.$disconnect();
-    }
+
   } catch (error: any) {
     console.error('=== Tests API Error ===');
     console.error('Error:', error);
-    console.error('Error details:', {
-      name: error.name,
-      message: error.message,
-      code: error.code,
-      meta: error.meta,
-      stack: error.stack
-    });
     return res.status(500).json({
       error: '服务器错误',
       message: error.message,
     });
+  } finally {
+    await pool.end();
   }
 }
