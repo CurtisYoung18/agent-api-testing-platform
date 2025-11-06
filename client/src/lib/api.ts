@@ -61,6 +61,7 @@ export interface TestHistory {
     id: number;
     name: string;
     region: string;
+    modelName?: string;
   };
 }
 
