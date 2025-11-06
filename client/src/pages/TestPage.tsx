@@ -38,11 +38,12 @@ export function TestPage() {
   const [executionMode, setExecutionMode] = useState<'parallel' | 'sequential'>('parallel')
   const [rpm, setRpm] = useState(60)
   const [testError, setTestError] = useState('')
-  // Real-time testing states (prepared for SSE implementation)
-  // const [isTestingLive, setIsTestingLive] = useState(false)
-  // const [liveResults, setLiveResults] = useState<any[]>([])
-  // const [liveStats, setLiveStats] = useState({ current: 0, total: 0, passedCount: 0, failedCount: 0, successRate: '0.00' })
-  // const [currentQuestion, setCurrentQuestion] = useState('')
+  // Real-time testing states
+  const [isTestingLive, setIsTestingLive] = useState(false)
+  const [liveResults, setLiveResults] = useState<any[]>([])
+  const [liveStats, setLiveStats] = useState({ current: 0, total: 0, passedCount: 0, failedCount: 0, successRate: '0.00' })
+  const [currentQuestion, setCurrentQuestion] = useState('')
+  const [currentResponse, setCurrentResponse] = useState('')
   const [previewQuestions, setPreviewQuestions] = useState<string[]>([])
   const [showPreview, setShowPreview] = useState(false)
 
@@ -141,13 +142,18 @@ export function TestPage() {
     }
   }
 
-  const handleStartTest = () => {
+  const handleStartTest = async () => {
     if (!selectedAgent || !uploadedFile) {
       setTestError('请确保已选择 Agent 和上传文件')
       return
     }
 
     setTestError('')
+    setIsTestingLive(true)
+    setLiveResults([])
+    setCurrentQuestion('')
+    setCurrentResponse('')
+    setLiveStats({ current: 0, total: 0, passedCount: 0, failedCount: 0, successRate: '0.00' })
     
     const formData = new FormData()
     formData.append('agentId', selectedAgent.id.toString())
@@ -155,7 +161,79 @@ export function TestPage() {
     formData.append('executionMode', executionMode)
     formData.append('rpm', rpm.toString())
 
-    createTestMutation.mutate(formData)
+    try {
+      // Upload file and start test with SSE
+      const response = await fetch('/api/tests?stream=true', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to start test')
+      }
+
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+
+      if (!reader) {
+        throw new Error('No response body')
+      }
+
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        
+        if (done) {
+          break
+        }
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.substring(6))
+              
+              if (data.type === 'connected') {
+                setLiveStats(prev => ({ ...prev, total: data.totalQuestions }))
+              } else if (data.type === 'progress') {
+                setCurrentQuestion(data.question)
+                setCurrentResponse('正在等待AI回复...')
+                setLiveStats(prev => ({ ...prev, current: data.current }))
+              } else if (data.type === 'result') {
+                setCurrentResponse(data.response || data.error)
+                const newResults = [...liveResults, data]
+                setLiveResults(newResults)
+                const passedCount = newResults.filter(r => r.success).length
+                const failedCount = newResults.length - passedCount
+                const successRate = newResults.length > 0 ? ((passedCount / newResults.length) * 100).toFixed(2) : '0.00'
+                setLiveStats(prev => ({ 
+                  ...prev, 
+                  passedCount, 
+                  failedCount, 
+                  successRate 
+                }))
+              } else if (data.type === 'complete') {
+                setIsTestingLive(false)
+                // Navigate to history page after completion
+                setTimeout(() => {
+                  navigate('/history')
+                }, 2000)
+              }
+            } catch (err) {
+              console.error('Failed to parse SSE data:', err)
+            }
+          }
+        }
+      }
+    } catch (error: any) {
+      console.error('Test execution error:', error)
+      setTestError(error.message || '测试执行失败，请重试')
+      setIsTestingLive(false)
+    }
   }
 
   return (
@@ -562,53 +640,134 @@ export function TestPage() {
             {/* Step 4: Start Test */}
             {step === 4 && (
               <div className="space-y-6">
-                {createTestMutation.isPending ? (
-                  // Loading State
-                  <div className="text-center py-12">
-                    <motion.div
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                      className="w-20 h-20 mx-auto mb-6"
-                    >
-                      <BeakerIcon className="w-full h-full text-primary-500" />
-                    </motion.div>
-                    <h2 className="text-2xl font-bold text-text-primary mb-2">测试进行中...</h2>
-                    <p className="text-text-secondary mb-8">正在执行测试，请稍候</p>
-                    
-                    <div className="glass-card p-6 max-w-md mx-auto">
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-text-secondary">正在解析测试文件...</span>
-                          <motion.span
-                            animate={{ opacity: [0.3, 1, 0.3] }}
-                            transition={{ duration: 1.5, repeat: Infinity }}
-                            className="text-primary-500 text-xl"
-                          >
-                            ●
-                          </motion.span>
+                {isTestingLive ? (
+                  // Live Testing State with Real-time Updates
+                  <div className="space-y-6">
+                    <div className="text-center">
+                      <motion.div
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                        className="w-16 h-16 mx-auto mb-4"
+                      >
+                        <BeakerIcon className="w-full h-full text-primary-500" />
+                      </motion.div>
+                      <h2 className="text-2xl font-bold text-text-primary mb-2">测试进行中...</h2>
+                      <p className="text-text-secondary">正在实时执行测试</p>
+                    </div>
+
+                    {/* Progress Stats */}
+                    <div className="glass-card p-6">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="text-center">
+                          <p className="text-3xl font-bold text-primary-500">
+                            {liveStats.current}/{liveStats.total}
+                          </p>
+                          <p className="text-sm text-text-tertiary mt-1">进度</p>
                         </div>
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-text-secondary">调用 Agent API...</span>
-                          <motion.span
-                            animate={{ opacity: [0.3, 1, 0.3] }}
-                            transition={{ duration: 1.5, repeat: Infinity, delay: 0.3 }}
-                            className="text-primary-500 text-xl"
-                          >
-                            ●
-                          </motion.span>
+                        <div className="text-center">
+                          <p className="text-3xl font-bold text-green-500">
+                            {liveStats.passedCount}
+                          </p>
+                          <p className="text-sm text-text-tertiary mt-1">成功</p>
                         </div>
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-text-secondary">生成测试报告...</span>
-                          <motion.span
-                            animate={{ opacity: [0.3, 1, 0.3] }}
-                            transition={{ duration: 1.5, repeat: Infinity, delay: 0.6 }}
-                            className="text-primary-500 text-xl"
-                          >
-                            ●
-                          </motion.span>
+                        <div className="text-center">
+                          <p className="text-3xl font-bold text-red-500">
+                            {liveStats.failedCount}
+                          </p>
+                          <p className="text-sm text-text-tertiary mt-1">失败</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-3xl font-bold text-primary-500">
+                            {liveStats.successRate}%
+                          </p>
+                          <p className="text-sm text-text-tertiary mt-1">成功率</p>
+                        </div>
+                      </div>
+
+                      {/* Progress Bar */}
+                      <div className="mt-6">
+                        <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
+                          <motion.div
+                            className="h-full bg-gradient-to-r from-primary-400 to-primary-600"
+                            initial={{ width: 0 }}
+                            animate={{ width: `${liveStats.total > 0 ? (liveStats.current / liveStats.total) * 100 : 0}%` }}
+                            transition={{ duration: 0.3 }}
+                          />
                         </div>
                       </div>
                     </div>
+
+                    {/* Current Question & Response */}
+                    {currentQuestion && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="glass-card p-6 space-y-4"
+                      >
+                        <div>
+                          <div className="flex items-center space-x-2 mb-2">
+                            <InformationCircleIcon className="w-5 h-5 text-primary-500" />
+                            <h3 className="font-semibold text-text-primary">当前测试问题</h3>
+                          </div>
+                          <p className="text-text-secondary bg-gray-50 p-3 rounded-lg">
+                            {currentQuestion}
+                          </p>
+                        </div>
+                        
+                        {currentResponse && (
+                          <div>
+                            <div className="flex items-center space-x-2 mb-2">
+                              <CpuChipIcon className="w-5 h-5 text-green-500" />
+                              <h3 className="font-semibold text-text-primary">AI 回复</h3>
+                            </div>
+                            <motion.p
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              className="text-text-secondary bg-green-50 p-3 rounded-lg"
+                            >
+                              {currentResponse}
+                            </motion.p>
+                          </div>
+                        )}
+                      </motion.div>
+                    )}
+
+                    {/* Recent Results */}
+                    {liveResults.length > 0 && (
+                      <div className="glass-card p-6">
+                        <h3 className="font-semibold text-text-primary mb-4">最近结果</h3>
+                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                          {liveResults.slice(-5).reverse().map((result, idx) => (
+                            <motion.div
+                              key={idx}
+                              initial={{ opacity: 0, x: -20 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              className={`p-3 rounded-lg border-l-4 ${
+                                result.success
+                                  ? 'bg-green-50 border-green-400'
+                                  : 'bg-red-50 border-red-400'
+                              }`}
+                            >
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <p className="text-sm font-medium text-text-primary mb-1">
+                                    {result.question}
+                                  </p>
+                                  <p className="text-xs text-text-tertiary">
+                                    响应时间: {result.responseTime}ms | Tokens: {result.tokens || 'N/A'}
+                                  </p>
+                                </div>
+                                {result.success ? (
+                                  <CheckCircleIcon className="w-5 h-5 text-green-500 ml-2" />
+                                ) : (
+                                  <span className="text-red-500 ml-2">❌</span>
+                                )}
+                              </div>
+                            </motion.div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   // Ready to Start
@@ -654,10 +813,10 @@ export function TestPage() {
                     )}
 
                     <motion.button
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
+                      whileHover={{ scale: isTestingLive ? 1 : 1.05 }}
+                      whileTap={{ scale: isTestingLive ? 1 : 0.95 }}
                       onClick={handleStartTest}
-                      disabled={createTestMutation.isPending}
+                      disabled={isTestingLive}
                       className="btn-primary text-lg px-10 py-4 flex items-center space-x-3 mx-auto mt-8 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <BeakerIcon className="w-6 h-6" />
@@ -675,9 +834,9 @@ export function TestPage() {
       <div className="flex justify-between items-center">
         <button
           onClick={handleBack}
-          disabled={step === 1}
+          disabled={step === 1 || isTestingLive}
           className={`flex items-center space-x-2 px-6 py-3 rounded-lg transition-all ${
-            step === 1
+            step === 1 || isTestingLive
               ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
               : 'bg-white text-text-primary hover:bg-primary-50 shadow-md'
           }`}

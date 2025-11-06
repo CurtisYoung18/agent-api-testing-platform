@@ -74,12 +74,14 @@ async function callAgentAPI(apiKey: string, region: string, question: string): P
     }
 
     const conversationData = await conversationResponse.json();
+    console.log('[info] Conversation response:', JSON.stringify(conversationData));
     const conversationId = conversationData.conversation_id;
 
     if (!conversationId) {
+      console.error('[error] Failed to get conversation_id. Full response:', JSON.stringify(conversationData));
       return {
         success: false,
-        error: '未获取到conversation_id',
+        error: `未获取到conversation_id. Response: ${JSON.stringify(conversationData)}`,
         responseTime: Date.now() - startTime,
       };
     }
@@ -426,6 +428,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const pool = getPool();
+  
+  // Check if client wants SSE stream
+  const wantsStream = req.headers.accept?.includes('text/event-stream') || req.query.stream === 'true';
 
   try {
     console.log('=== Tests API Request Started ===');
@@ -440,7 +445,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const rpm = parseInt(fields.rpm?.[0] || '60', 10);
     const file = files.file?.[0];
 
-    console.log('Request params:', { agentId, executionMode, rpm, hasFile: !!file });
+    console.log('Request params:', { agentId, executionMode, rpm, hasFile: !!file, wantsStream });
 
     if (!agentId || !file) {
       console.error('Missing required fields');
@@ -471,9 +476,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Excel文件中未找到有效的测试问题' });
     }
 
+    // Setup SSE if requested
+    if (wantsStream) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+      
+      // Send initial connection event
+      res.write(`data: ${JSON.stringify({ type: 'connected', totalQuestions: questions.length })}\n\n`);
+    }
+
     // Execute tests
     console.log('Starting test execution...');
-    const testResults = await executeTests(agent, questions, referenceOutputs, executionMode, rpm);
+    const testResults = await executeTests(
+      agent, 
+      questions, 
+      referenceOutputs, 
+      executionMode, 
+      rpm,
+      wantsStream ? (data) => {
+        // Send progress via SSE
+        try {
+          res.write(`data: ${JSON.stringify(data)}\n\n`);
+        } catch (err) {
+          console.error('Failed to write SSE data:', err);
+        }
+      } : undefined
+    );
     console.log('Test execution completed:', {
       totalQuestions: testResults.totalQuestions,
       passedCount: testResults.passedCount,
@@ -534,7 +564,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     );
 
     console.log('=== Tests API Request Completed ===');
-    return res.status(201).json({
+    
+    const responseData = {
       id: testHistoryId,
       message: '测试执行完成',
       summary: {
@@ -546,7 +577,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         totalTokens: testResults.totalTokens,
         totalCost: testResults.totalCost.toFixed(4),
       },
-    });
+    };
+    
+    if (wantsStream) {
+      // Send final result via SSE
+      res.write(`data: ${JSON.stringify({ type: 'complete', ...responseData })}\n\n`);
+      res.end();
+    } else {
+      return res.status(201).json(responseData);
+    }
 
   } catch (error: any) {
     console.error('=== Tests API Error ===');
