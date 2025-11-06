@@ -191,17 +191,20 @@ export function TestPage() {
                 setLiveStats(prev => ({ ...prev, current: data.current }))
               } else if (data.type === 'result') {
                 setCurrentResponse(data.response || data.error)
-                const newResults = [...liveResults, data]
-                setLiveResults(newResults)
-                const passedCount = newResults.filter(r => r.success).length
-                const failedCount = newResults.length - passedCount
-                const successRate = newResults.length > 0 ? ((passedCount / newResults.length) * 100).toFixed(2) : '0.00'
-                setLiveStats(prev => ({ 
-                  ...prev, 
-                  passedCount, 
-                  failedCount, 
-                  successRate 
-                }))
+                // Use functional update to access the latest state
+                setLiveResults(prevResults => {
+                  const newResults = [...prevResults, data]
+                  const passedCount = newResults.filter(r => r.success).length
+                  const failedCount = newResults.length - passedCount
+                  const successRate = newResults.length > 0 ? ((passedCount / newResults.length) * 100).toFixed(2) : '0.00'
+                  setLiveStats(prev => ({ 
+                    ...prev, 
+                    passedCount, 
+                    failedCount, 
+                    successRate 
+                  }))
+                  return newResults
+                })
               } else if (data.type === 'complete') {
                 setIsTestingLive(false)
                 // Navigate to history page after completion
