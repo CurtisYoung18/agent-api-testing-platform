@@ -1,11 +1,13 @@
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import {
   ArrowLeftIcon,
   ChartBarIcon,
   ClockIcon,
   CpuChipIcon,
-  CheckCircleIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
 } from '@heroicons/react/24/outline'
 import { historyApi } from '../lib/api'
 import {
@@ -25,12 +27,25 @@ export function ComparePage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const ids = searchParams.get('ids')?.split(',').map(Number).filter(Boolean) || []
+  const [expandedQuestions, setExpandedQuestions] = useState<Set<number>>(new Set())
 
   const { data: histories, isLoading } = useQuery({
     queryKey: ['compare-histories', ids],
     queryFn: () => historyApi.getMultiple(ids),
     enabled: ids.length > 0,
   })
+
+  const toggleQuestion = (index: number) => {
+    setExpandedQuestions(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(index)) {
+        newSet.delete(index)
+      } else {
+        newSet.add(index)
+      }
+      return newSet
+    })
+  }
 
   if (ids.length === 0) {
     return (
@@ -112,24 +127,6 @@ export function ComparePage() {
         </div>
       </div>
 
-      {/* 成功率对比 */}
-      <div className="glass-card p-6">
-        <h2 className="text-xl font-bold text-text-primary mb-4 flex items-center">
-          <CheckCircleIcon className="w-6 h-6 mr-2 text-success" />
-          成功率对比
-        </h2>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="agentName" />
-            <YAxis domain={[0, 100]} />
-            <Tooltip />
-            <Legend />
-            <Bar dataKey="successRate" name="成功率 (%)" fill="#10b981" />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
       {/* 响应时间对比 */}
       <div className="glass-card p-6">
         <h2 className="text-xl font-bold text-text-primary mb-4 flex items-center">
@@ -184,82 +181,118 @@ export function ComparePage() {
           const baseResults = (histories[0]?.jsonData as any)?.results || []
           
           return (
-            <div className="space-y-6">
-              {baseResults.map((baseResult: any, qIndex: number) => (
-                <div key={qIndex} className="border border-gray-200 rounded-lg p-4">
-                  <div className="mb-4 pb-3 border-b border-gray-200">
-                    <h3 className="font-semibold text-text-primary mb-2">
-                      问题 {qIndex + 1}
-                    </h3>
-                    <p className="text-sm text-text-secondary">{baseResult.question}</p>
-                    {baseResult.referenceOutput && (
-                      <div className="mt-2 p-2 bg-blue-50 rounded">
-                        <p className="text-xs font-semibold text-blue-700 mb-1">参考答案:</p>
-                        <p className="text-xs text-blue-600">{baseResult.referenceOutput}</p>
-                      </div>
-                    )}
-                  </div>
-                  
-                  <div className="grid grid-cols-1 gap-4">
-                    {histories.map((history, hIndex) => {
-                      const result = ((history.jsonData as any)?.results || [])[qIndex]
-                      if (!result) return null
-                      
-                      return (
-                        <div 
-                          key={history.id}
-                          className="p-4 rounded-lg border-2"
-                          style={{ borderColor: colors[hIndex % colors.length] }}
-                        >
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center space-x-2">
-                              <div 
-                                className="w-3 h-3 rounded-full"
-                                style={{ backgroundColor: colors[hIndex % colors.length] }}
-                              />
-                              <span className="font-semibold text-text-primary">
-                                {history.agentName}
-                              </span>
-                              {history.agent?.region && (
-                                <span className="text-xs text-text-tertiary">
-                                  ({history.agent.region})
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center space-x-4 text-xs">
-                              <span className={result.success ? 'text-success' : 'text-error'}>
-                                {result.success ? '✓ 成功' : '✗ 失败'}
-                              </span>
-                              <span className="text-text-tertiary">
-                                {result.responseTime}ms
-                              </span>
-                            </div>
-                          </div>
-                          
-                          <div className="mt-2">
-                            <p className="text-xs font-semibold text-gray-700 mb-1">Agent回复:</p>
-                            {result.success ? (
-                              <div className="text-sm text-text-primary whitespace-pre-wrap bg-gray-50 p-3 rounded">
-                                {result.response}
-                              </div>
+            <div className="space-y-4">
+              {baseResults.map((baseResult: any, qIndex: number) => {
+                const isExpanded = expandedQuestions.has(qIndex)
+                
+                return (
+                  <div key={qIndex} className="border border-gray-200 rounded-lg overflow-hidden">
+                    {/* Question Header - Always visible */}
+                    <div 
+                      className="p-4 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
+                      onClick={() => toggleQuestion(qIndex)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2 mb-2">
+                            <h3 className="font-semibold text-text-primary">
+                              问题 {qIndex + 1}
+                            </h3>
+                            {isExpanded ? (
+                              <ChevronUpIcon className="w-5 h-5 text-text-tertiary" />
                             ) : (
-                              <div className="text-sm text-error bg-red-50 p-3 rounded">
-                                错误: {result.error}
-                              </div>
+                              <ChevronDownIcon className="w-5 h-5 text-text-tertiary" />
                             )}
                           </div>
-                          
-                          {result.tokens && (
-                            <div className="mt-2 text-xs text-text-tertiary">
-                              Token消耗: {result.tokens}
+                          <p className="text-sm text-text-secondary line-clamp-2">{baseResult.question}</p>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Question Details - Expandable */}
+                    {isExpanded && (
+                      <div className="p-4 border-t border-gray-200">
+                        <div className="mb-4">
+                          <p className="text-sm text-text-secondary mb-3">
+                            <span className="font-semibold">完整问题: </span>
+                            {baseResult.question}
+                          </p>
+                          {baseResult.referenceOutput && (
+                            <div className="p-2 bg-blue-50 rounded">
+                              <p className="text-xs font-semibold text-blue-700 mb-1">参考答案:</p>
+                              <p className="text-xs text-blue-600">{baseResult.referenceOutput}</p>
                             </div>
                           )}
                         </div>
-                      )
-                    })}
+                        
+                        <div className="grid grid-cols-1 gap-4">
+                          {histories.map((history, hIndex) => {
+                            const result = ((history.jsonData as any)?.results || [])[qIndex]
+                            if (!result) return null
+                            
+                            return (
+                              <div 
+                                key={history.id}
+                                className="p-4 rounded-lg border-2"
+                                style={{ borderColor: colors[hIndex % colors.length] }}
+                              >
+                                <div className="flex items-center justify-between mb-3">
+                                  <div className="flex items-center space-x-2">
+                                    <div 
+                                      className="w-3 h-3 rounded-full"
+                                      style={{ backgroundColor: colors[hIndex % colors.length] }}
+                                    />
+                                    <span className="font-semibold text-text-primary">
+                                      {history.agentName}
+                                    </span>
+                                    {history.agent?.modelName && (
+                                      <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full">
+                                        {history.agent.modelName}
+                                      </span>
+                                    )}
+                                    {history.agent?.region && (
+                                      <span className="text-xs text-text-tertiary">
+                                        ({history.agent.region})
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center space-x-4 text-xs">
+                                    <span className={result.success ? 'text-success' : 'text-error'}>
+                                      {result.success ? '✓ 成功' : '✗ 失败'}
+                                    </span>
+                                    <span className="text-text-tertiary">
+                                      {result.responseTime}ms
+                                    </span>
+                                  </div>
+                                </div>
+                                
+                                <div className="mt-2">
+                                  <p className="text-xs font-semibold text-gray-700 mb-1">Agent回复:</p>
+                                  {result.success ? (
+                                    <div className="text-sm text-text-primary whitespace-pre-wrap bg-gray-50 p-3 rounded">
+                                      {result.response}
+                                    </div>
+                                  ) : (
+                                    <div className="text-sm text-error bg-red-50 p-3 rounded">
+                                      错误: {result.error}
+                                    </div>
+                                  )}
+                                </div>
+                                
+                                {result.tokens && (
+                                  <div className="mt-2 text-xs text-text-tertiary">
+                                    Token消耗: {result.tokens}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )
         })()}
