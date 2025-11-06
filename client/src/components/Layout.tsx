@@ -23,7 +23,7 @@ export function Layout({ children }: LayoutProps) {
             <div className="flex items-center space-x-3">
               <img src="/logo.png" alt="Logo" className="h-8 w-auto object-contain" />
               <span className="text-xl font-semibold text-text-primary">
-                测试平台
+                GPTBots评测平台
               </span>
             </div>
 
