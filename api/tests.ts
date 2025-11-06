@@ -9,7 +9,14 @@ let prisma: any;
 async function getPrismaClient() {
   if (!prisma) {
     const { PrismaClient } = await import('@prisma/client');
-    prisma = new PrismaClient();
+    prisma = new PrismaClient({
+      // Disable prepared statements to avoid cache issues after schema changes
+      datasources: {
+        db: {
+          url: process.env.DATABASE_URL,
+        },
+      },
+    });
   }
   return prisma;
 }
