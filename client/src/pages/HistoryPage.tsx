@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { historyApi, type TestHistory } from '@/lib/api'
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { 
   ClockIcon,
@@ -16,15 +16,26 @@ import {
   ChartBarIcon,
   XMarkIcon,
   ExclamationTriangleIcon,
+  CpuChipIcon,
 } from '@heroicons/react/24/outline'
 
 export function HistoryPage() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const location = useLocation()
   const [page, setPage] = useState(1)
   const [selectedRecord, setSelectedRecord] = useState<TestHistory | null>(null)
   const [selectedForCompare, setSelectedForCompare] = useState<number[]>([])
   const [isCompareMode, setIsCompareMode] = useState(false)
+  
+  // Auto-refresh when navigated from test completion
+  useEffect(() => {
+    if (location.state?.refresh) {
+      queryClient.invalidateQueries({ queryKey: ['history'] })
+      // Clear the state to prevent refresh on subsequent visits
+      window.history.replaceState({}, document.title)
+    }
+  }, [location, queryClient])
   
   const { data, isLoading } = useQuery({
     queryKey: ['history', page],
@@ -181,9 +192,17 @@ export function HistoryPage() {
                   <p className="text-sm text-text-tertiary">
                     {new Date(record.testDate).toLocaleString('zh-CN')}
                   </p>
-                  <h3 className="text-lg font-semibold text-text-primary mt-1">
-                    {record.agentName}
-                  </h3>
+                  <div className="flex items-center space-x-2 mt-1">
+                    <h3 className="text-lg font-semibold text-text-primary">
+                      {record.agentName}
+                    </h3>
+                    {(record.modelName || record.agent?.modelName) && (
+                      <span className="px-2 py-1 text-xs rounded-full bg-purple-100 text-purple-700 flex items-center space-x-1">
+                        <CpuChipIcon className="w-3 h-3" />
+                        <span>{record.modelName || record.agent?.modelName}</span>
+                      </span>
+                    )}
+                  </div>
                   <div className="flex items-center space-x-4 mt-2">
                     <span className={`badge flex items-center space-x-1 ${record.successRate >= 80 ? 'badge-success' : 'badge-warning'}`}>
                       {record.successRate >= 80 ? (

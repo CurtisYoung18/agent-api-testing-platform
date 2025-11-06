@@ -44,6 +44,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           id: record.id,
           agentId: record.agent_id,
           agentName: record.agent_name,
+          modelName: record.model_name,
           testDate: record.test_date,
           totalQuestions: record.total_questions,
           passedCount: record.passed_count,
@@ -78,7 +79,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const result = await pool.query(
         `SELECT h.*, 
-                a.id as agent_id, a.name as agent_name, a.region as agent_region
+                a.id as agent_id, a.name as agent_name, a.region as agent_region, a.model_name
          FROM test_history h
          LEFT JOIN agents a ON h.agent_id = a.id
          ORDER BY h.test_date DESC
@@ -90,6 +91,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         id: record.id,
         agentId: record.agent_id,
         agentName: record.agent_name,
+        modelName: record.model_name,
         testDate: record.test_date,
         totalQuestions: record.total_questions,
         passedCount: record.passed_count,
@@ -107,6 +109,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           id: record.agent_id,
           name: record.agent_name,
           region: record.agent_region,
+          modelName: record.model_name,
         } : null,
       }));
 

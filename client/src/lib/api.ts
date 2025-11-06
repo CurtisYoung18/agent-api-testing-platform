@@ -44,6 +44,7 @@ export interface TestHistory {
   id: number;
   agentId: number | null;
   agentName: string;
+  modelName?: string;
   testDate: string;
   totalQuestions: number;
   passedCount: number;

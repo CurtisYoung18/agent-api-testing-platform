@@ -213,7 +213,7 @@ export function TestPage() {
                 setCurrentQuestion('')
                 setCurrentResponse('✅ 测试已完成！正在跳转到历史记录...')
                 setTimeout(() => {
-                  navigate('/history')
+                  navigate('/history', { state: { refresh: true } })
                 }, 1500)
               }
             } catch (err) {
