@@ -55,13 +55,15 @@ async function callAgentAPI(apiKey: string, region: string, question: string): P
       : 'https://api.gptbots.cn';
 
     // Step 1: Create conversation
-    const conversationResponse = await fetch(`${baseUrl}/v2/conversation`, {
+    const conversationResponse = await fetch(`${baseUrl}/v1/conversation`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({}),
+      body: JSON.stringify({
+        user_id: 'test_user_' + Date.now()
+      }),
     });
 
     if (!conversationResponse.ok) {
@@ -95,14 +97,14 @@ async function callAgentAPI(apiKey: string, region: string, question: string): P
       },
       body: JSON.stringify({
         conversation_id: conversationId,
-        inputs: [{
-          input_type: 'text',
-          content: { text: question },
-        }],
-        model_config: {
-          model: 'default',
-          temperature: 0.7,
-        },
+        response_mode: 'blocking',
+        messages: [{
+          role: 'user',
+          content: [{
+            type: 'text',
+            text: question
+          }]
+        }]
       }),
     });
 
