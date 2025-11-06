@@ -2,7 +2,7 @@
   "version": 2,
   "buildCommand": "cd client && npm install && npm run build",
   "outputDirectory": "client/dist",
-  "installCommand": "npm install && npx prisma generate",
+  "installCommand": "npm install",
   "rewrites": [
     {
       "source": "/api/agents/:id",
@@ -31,7 +31,6 @@
   ],
   "functions": {
     "api/**/*.ts": {
-      "includeFiles": "node_modules/.prisma/client/**",
       "maxDuration": 300
     }
   }
