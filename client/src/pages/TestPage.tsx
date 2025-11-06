@@ -9,6 +9,8 @@ import {
   MagnifyingGlassIcon,
   ChevronRightIcon,
   ChevronLeftIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
   CheckCircleIcon,
   CpuChipIcon,
   DocumentArrowUpIcon,
@@ -16,6 +18,8 @@ import {
   PlayIcon,
   ArrowDownTrayIcon,
   InformationCircleIcon,
+  EyeIcon,
+  TrashIcon,
 } from '@heroicons/react/24/outline'
 import { api } from '../lib/api'
 
@@ -47,6 +51,7 @@ export function TestPage() {
   const [currentResponse, setCurrentResponse] = useState('')
   const [previewQuestions, setPreviewQuestions] = useState<string[]>([])
   const [showPreview, setShowPreview] = useState(false)
+  const [expandedResults, setExpandedResults] = useState<Set<number>>(new Set())
 
   // Fetch agents
   const { data: agents = [], isLoading } = useQuery({
@@ -129,6 +134,18 @@ export function TestPage() {
     }
   }
 
+  const toggleResultExpand = (index: number) => {
+    setExpandedResults(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(index)) {
+        newSet.delete(index)
+      } else {
+        newSet.add(index)
+      }
+      return newSet
+    })
+  }
+
   const handleStartTest = async () => {
     if (!selectedAgent || !uploadedFile) {
       setTestError('请确保已选择 Agent 和上传文件')
@@ -142,6 +159,7 @@ export function TestPage() {
     setCurrentQuestion('')
     setCurrentResponse('')
     setLiveStats({ current: 0, total: 0, passedCount: 0, failedCount: 0, successRate: '0.00' })
+    setExpandedResults(new Set())
     
     const formData = new FormData()
     formData.append('agentId', selectedAgent.id.toString())
@@ -439,33 +457,64 @@ export function TestPage() {
                           {(uploadedFile.size / 1024).toFixed(2)} KB
                         </p>
                         {previewQuestions.length > 0 && (
-                          <div className="mt-4">
-                            <p className="text-sm font-semibold text-success mb-2">
-                              ✅ 成功解析 {previewQuestions.length} 个测试问题
-                            </p>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setShowPreview(!showPreview)
-                              }}
-                              className="text-sm text-primary-600 hover:text-primary-700 font-medium underline"
-                            >
-                              {showPreview ? '隐藏预览' : '👀 点击预览问题'}
-                            </button>
+                          <div className="mt-4 space-y-3">
+                            <div className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-green-100 text-green-700">
+                              <CheckCircleIcon className="w-5 h-5" />
+                              <span className="text-sm font-semibold">
+                                成功解析 {previewQuestions.length} 个测试问题
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-center space-x-3">
+                              <motion.button
+                                type="button"
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setShowPreview(!showPreview)
+                                }}
+                                className="inline-flex items-center space-x-2 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors duration-200 shadow-md hover:shadow-lg"
+                              >
+                                <EyeIcon className="w-5 h-5" />
+                                <span className="font-medium">
+                                  {showPreview ? '隐藏预览' : '预览问题'}
+                                </span>
+                              </motion.button>
+                              <motion.button
+                                type="button"
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setUploadedFile(null)
+                                  setPreviewQuestions([])
+                                  setShowPreview(false)
+                                }}
+                                className="inline-flex items-center space-x-2 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors duration-200 shadow-md hover:shadow-lg"
+                              >
+                                <TrashIcon className="w-5 h-5" />
+                                <span className="font-medium">移除文件</span>
+                              </motion.button>
+                            </div>
                           </div>
                         )}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setUploadedFile(null)
-                            setPreviewQuestions([])
-                            setShowPreview(false)
-                          }}
-                          className="text-sm text-red-500 hover:text-red-600 mt-2"
-                        >
-                          移除文件
-                        </button>
+                        {previewQuestions.length === 0 && (
+                          <motion.button
+                            type="button"
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setUploadedFile(null)
+                              setPreviewQuestions([])
+                              setShowPreview(false)
+                            }}
+                            className="inline-flex items-center space-x-2 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors duration-200 shadow-md hover:shadow-lg mt-2"
+                          >
+                            <TrashIcon className="w-5 h-5" />
+                            <span className="font-medium">移除文件</span>
+                          </motion.button>
+                        )}
                       </>
                     ) : (
                       <>
@@ -752,36 +801,87 @@ export function TestPage() {
                     {/* Recent Results */}
                     {liveResults.length > 0 && (
                       <div className="glass-card p-6">
-                        <h3 className="font-semibold text-text-primary mb-4">最近结果</h3>
-                        <div className="space-y-2 max-h-64 overflow-y-auto">
-                          {liveResults.slice(-5).reverse().map((result, idx) => (
-                            <motion.div
-                              key={idx}
-                              initial={{ opacity: 0, x: -20 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              className={`p-3 rounded-lg border-l-4 ${
-                                result.success
-                                  ? 'bg-green-50 border-green-400'
-                                  : 'bg-red-50 border-red-400'
-                              }`}
-                            >
-                              <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                  <p className="text-sm font-medium text-text-primary mb-1">
-                                    {result.question}
-                                  </p>
-                                  <p className="text-xs text-text-tertiary">
-                                    响应时间: {result.responseTime}ms | Tokens: {result.tokens || 'N/A'}
-                                  </p>
+                        <h3 className="font-semibold text-text-primary mb-4">最近结果 ({liveResults.slice(-5).length})</h3>
+                        <div className="space-y-2 max-h-96 overflow-y-auto">
+                          {liveResults.slice(-5).reverse().map((result, idx) => {
+                            const actualIndex = liveResults.length - 1 - idx
+                            const isExpanded = expandedResults.has(actualIndex)
+                            
+                            return (
+                              <motion.div
+                                key={actualIndex}
+                                initial={{ opacity: 0, x: -20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                className={`rounded-lg border-l-4 overflow-hidden ${
+                                  result.success
+                                    ? 'bg-green-50 border-green-400'
+                                    : 'bg-red-50 border-red-400'
+                                }`}
+                              >
+                                <div 
+                                  onClick={() => toggleResultExpand(actualIndex)}
+                                  className="p-3 cursor-pointer hover:bg-white/50 transition-colors"
+                                >
+                                  <div className="flex items-start justify-between">
+                                    <div className="flex-1">
+                                      <div className="flex items-start space-x-2">
+                                        <div className="flex-1">
+                                          <p className="text-sm font-medium text-text-primary mb-1">
+                                            {result.question}
+                                          </p>
+                                          <p className="text-xs text-text-tertiary">
+                                            响应时间: {result.responseTime}ms | Tokens: {result.tokens || 'N/A'}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center space-x-2 ml-2">
+                                      {result.success ? (
+                                        <CheckCircleIcon className="w-5 h-5 text-green-500" />
+                                      ) : (
+                                        <span className="text-red-500 text-lg">❌</span>
+                                      )}
+                                      {isExpanded ? (
+                                        <ChevronUpIcon className="w-5 h-5 text-text-tertiary" />
+                                      ) : (
+                                        <ChevronDownIcon className="w-5 h-5 text-text-tertiary" />
+                                      )}
+                                    </div>
+                                  </div>
                                 </div>
-                                {result.success ? (
-                                  <CheckCircleIcon className="w-5 h-5 text-green-500 ml-2" />
-                                ) : (
-                                  <span className="text-red-500 ml-2">❌</span>
-                                )}
-                              </div>
-                            </motion.div>
-                          ))}
+                                
+                                <AnimatePresence>
+                                  {isExpanded && (
+                                    <motion.div
+                                      initial={{ height: 0, opacity: 0 }}
+                                      animate={{ height: 'auto', opacity: 1 }}
+                                      exit={{ height: 0, opacity: 0 }}
+                                      transition={{ duration: 0.2 }}
+                                      className="overflow-hidden"
+                                    >
+                                      <div className="px-3 pb-3 pt-2 border-t border-white/50">
+                                        <div className="flex items-center space-x-2 mb-2">
+                                          <CpuChipIcon className="w-4 h-4 text-text-tertiary" />
+                                          <span className="text-xs font-semibold text-text-secondary">
+                                            {result.success ? 'AI 回复' : '错误信息'}
+                                          </span>
+                                        </div>
+                                        <div className={`text-sm p-3 rounded-lg ${
+                                          result.success 
+                                            ? 'bg-white text-text-primary' 
+                                            : 'bg-red-100 text-error'
+                                        }`}>
+                                          <pre className="whitespace-pre-wrap break-words font-sans">
+                                            {result.success ? result.response : result.error}
+                                          </pre>
+                                        </div>
+                                      </div>
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
+                              </motion.div>
+                            )
+                          })}
                         </div>
                       </div>
                     )}
