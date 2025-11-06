@@ -40,6 +40,7 @@ export function TestPage() {
   const [testError, setTestError] = useState('')
   // Real-time testing states
   const [isTestingLive, setIsTestingLive] = useState(false)
+  const [testCompleted, setTestCompleted] = useState(false)
   const [liveResults, setLiveResults] = useState<any[]>([])
   const [liveStats, setLiveStats] = useState({ current: 0, total: 0, passedCount: 0, failedCount: 0, successRate: '0.00' })
   const [currentQuestion, setCurrentQuestion] = useState('')
@@ -136,6 +137,7 @@ export function TestPage() {
 
     setTestError('')
     setIsTestingLive(true)
+    setTestCompleted(false)
     setLiveResults([])
     setCurrentQuestion('')
     setCurrentResponse('')
@@ -206,11 +208,13 @@ export function TestPage() {
                   return newResults
                 })
               } else if (data.type === 'complete') {
-                setIsTestingLive(false)
-                // Navigate to history page after completion
+                // Mark test as completed and navigate after a brief moment
+                setTestCompleted(true)
+                setCurrentQuestion('')
+                setCurrentResponse('✅ 测试已完成！正在跳转到历史记录...')
                 setTimeout(() => {
                   navigate('/history')
-                }, 2000)
+                }, 1500)
               }
             } catch (err) {
               console.error('Failed to parse SSE data:', err)
@@ -222,6 +226,7 @@ export function TestPage() {
       console.error('Test execution error:', error)
       setTestError(error.message || '测试执行失败，请重试')
       setIsTestingLive(false)
+      setTestCompleted(false)
     }
   }
 
@@ -629,19 +634,36 @@ export function TestPage() {
             {/* Step 4: Start Test */}
             {step === 4 && (
               <div className="space-y-6">
-                {isTestingLive ? (
+                {isTestingLive || testCompleted ? (
                   // Live Testing State with Real-time Updates
                   <div className="space-y-6">
                     <div className="text-center">
-                      <motion.div
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                        className="w-16 h-16 mx-auto mb-4"
-                      >
-                        <BeakerIcon className="w-full h-full text-primary-500" />
-                      </motion.div>
-                      <h2 className="text-2xl font-bold text-text-primary mb-2">测试进行中...</h2>
-                      <p className="text-text-secondary">正在实时执行测试</p>
+                      {testCompleted ? (
+                        <>
+                          <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            transition={{ type: "spring", duration: 0.5 }}
+                            className="w-16 h-16 mx-auto mb-4"
+                          >
+                            <CheckCircleIcon className="w-full h-full text-green-500" />
+                          </motion.div>
+                          <h2 className="text-2xl font-bold text-text-primary mb-2">测试完成！</h2>
+                          <p className="text-text-secondary">正在跳转到历史记录...</p>
+                        </>
+                      ) : (
+                        <>
+                          <motion.div
+                            animate={{ rotate: 360 }}
+                            transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                            className="w-16 h-16 mx-auto mb-4"
+                          >
+                            <BeakerIcon className="w-full h-full text-primary-500" />
+                          </motion.div>
+                          <h2 className="text-2xl font-bold text-text-primary mb-2">测试进行中...</h2>
+                          <p className="text-text-secondary">正在实时执行测试</p>
+                        </>
+                      )}
                     </div>
 
                     {/* Progress Stats */}
@@ -687,32 +709,38 @@ export function TestPage() {
                     </div>
 
                     {/* Current Question & Response */}
-                    {currentQuestion && (
+                    {(currentQuestion || currentResponse) && (
                       <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         className="glass-card p-6 space-y-4"
                       >
-                        <div>
-                          <div className="flex items-center space-x-2 mb-2">
-                            <InformationCircleIcon className="w-5 h-5 text-primary-500" />
-                            <h3 className="font-semibold text-text-primary">当前测试问题</h3>
+                        {currentQuestion && (
+                          <div>
+                            <div className="flex items-center space-x-2 mb-2">
+                              <InformationCircleIcon className="w-5 h-5 text-primary-500" />
+                              <h3 className="font-semibold text-text-primary">当前测试问题</h3>
+                            </div>
+                            <p className="text-text-secondary bg-gray-50 p-3 rounded-lg">
+                              {currentQuestion}
+                            </p>
                           </div>
-                          <p className="text-text-secondary bg-gray-50 p-3 rounded-lg">
-                            {currentQuestion}
-                          </p>
-                        </div>
+                        )}
                         
                         {currentResponse && (
                           <div>
                             <div className="flex items-center space-x-2 mb-2">
                               <CpuChipIcon className="w-5 h-5 text-green-500" />
-                              <h3 className="font-semibold text-text-primary">AI 回复</h3>
+                              <h3 className="font-semibold text-text-primary">
+                                {testCompleted ? '状态' : 'AI 回复'}
+                              </h3>
                             </div>
                             <motion.p
                               initial={{ opacity: 0 }}
                               animate={{ opacity: 1 }}
-                              className="text-text-secondary bg-green-50 p-3 rounded-lg"
+                              className={`text-text-secondary p-3 rounded-lg ${
+                                testCompleted ? 'bg-green-100 text-green-700 font-semibold' : 'bg-green-50'
+                              }`}
                             >
                               {currentResponse}
                             </motion.p>
