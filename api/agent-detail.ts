@@ -1,21 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-
-// Initialize Prisma Client lazily
-let prisma: any;
-
-async function getPrismaClient() {
-  if (!prisma) {
-    const { PrismaClient } = await import('@prisma/client');
-    prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: process.env.DATABASE_URL,
-        },
-      },
-    });
-  }
-  return prisma;
-}
+import { getDbPool } from './db';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -26,8 +10,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).end();
   }
 
+  const pool = getDbPool();
+
   try {
-    const prismaClient = await getPrismaClient();
     // Check both query and params for id (Express vs Vercel routing)
     const id = req.query.id || (req as any).params?.id;
 
@@ -43,19 +28,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // GET - Get single agent
     if (req.method === 'GET') {
-      const agent = await prismaClient.agent.findUnique({
-        where: { id: agentId },
-      });
+      const result = await pool.query(
+        'SELECT * FROM agents WHERE id = $1',
+        [agentId]
+      );
 
-      if (!agent) {
+      if (result.rows.length === 0) {
         return res.status(404).json({ error: 'Agent 不存在' });
       }
 
+      const agent = result.rows[0];
+
       return res.json({
-        ...agent,
-        apiKey: agent.apiKey.length > 14
-          ? `${agent.apiKey.slice(0, 10)}***${agent.apiKey.slice(-4)}`
+        id: agent.id,
+        name: agent.name,
+        modelName: agent.model_name,
+        region: agent.region,
+        apiKey: agent.api_key.length > 14
+          ? `${agent.api_key.slice(0, 10)}***${agent.api_key.slice(-4)}`
           : '***',
+        status: agent.status,
+        lastUsed: agent.last_used,
+        createdAt: agent.created_at,
+        updatedAt: agent.updated_at,
       });
     }
 
@@ -65,41 +60,77 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       console.log('Update agent request:', { agentId, name, modelName, region, status });
 
-      const updateData: any = {};
-      if (name) updateData.name = name;
-      if (modelName !== undefined) updateData.modelName = modelName || null;
+      const updates: string[] = [];
+      const values: any[] = [];
+      let paramIndex = 1;
+
+      if (name) {
+        updates.push(`name = $${paramIndex++}`);
+        values.push(name);
+      }
+      if (modelName !== undefined) {
+        updates.push(`model_name = $${paramIndex++}`);
+        values.push(modelName || null);
+      }
       if (region) {
         if (!['SG', 'CN'].includes(region)) {
           return res.status(400).json({ error: '无效的区域' });
         }
-        updateData.region = region;
+        updates.push(`region = $${paramIndex++}`);
+        values.push(region);
       }
-      if (apiKey) updateData.apiKey = apiKey;
-      if (status) updateData.status = status;
-      updateData.updatedAt = new Date();
+      if (apiKey) {
+        updates.push(`api_key = $${paramIndex++}`);
+        values.push(apiKey);
+      }
+      if (status) {
+        updates.push(`status = $${paramIndex++}`);
+        values.push(status);
+      }
 
-      console.log('Update data:', updateData);
+      updates.push(`updated_at = NOW()`);
+      values.push(agentId);
 
-      const agent = await prismaClient.agent.update({
-        where: { id: agentId },
-        data: updateData,
-      });
+      console.log('Update data:', { updates, values });
 
-      console.log('Updated agent:', { id: agent.id, name: agent.name, modelName: agent.modelName });
+      const result = await pool.query(
+        `UPDATE agents SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+        values
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Agent 不存在' });
+      }
+
+      const agent = result.rows[0];
+
+      console.log('Updated agent:', { id: agent.id, name: agent.name, modelName: agent.model_name });
 
       return res.json({
-        ...agent,
-        apiKey: agent.apiKey.length > 14
-          ? `${agent.apiKey.slice(0, 10)}***${agent.apiKey.slice(-4)}`
+        id: agent.id,
+        name: agent.name,
+        modelName: agent.model_name,
+        region: agent.region,
+        apiKey: agent.api_key.length > 14
+          ? `${agent.api_key.slice(0, 10)}***${agent.api_key.slice(-4)}`
           : '***',
+        status: agent.status,
+        lastUsed: agent.last_used,
+        createdAt: agent.created_at,
+        updatedAt: agent.updated_at,
       });
     }
 
     // DELETE - Delete agent
     if (req.method === 'DELETE') {
-      await prismaClient.agent.delete({
-        where: { id: agentId },
-      });
+      const result = await pool.query(
+        'DELETE FROM agents WHERE id = $1 RETURNING id',
+        [agentId]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Agent 不存在' });
+      }
 
       return res.json({ success: true, message: 'Agent 已删除' });
     }
@@ -110,25 +141,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.error('Error details:', {
       code: error.code,
       message: error.message,
-      meta: error.meta,
       stack: error.stack
     });
     
-    // Handle specific Prisma errors
-    if (error.code === 'P2025') {
-      return res.status(404).json({ error: 'Agent 不存在' });
-    }
-
-    if (error.code === 'P2002') {
-      return res.status(400).json({ error: '数据冲突' });
-    }
-
     return res.status(500).json({
       error: '服务器错误',
       message: error.message,
       code: error.code,
-      details: error.meta
     });
+  } finally {
+    await pool.end();
   }
 }
-

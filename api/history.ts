@@ -1,21 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-
-// Initialize Prisma Client lazily
-let prisma: any;
-
-async function getPrismaClient() {
-  if (!prisma) {
-    const { PrismaClient } = await import('@prisma/client');
-    prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: process.env.DATABASE_URL,
-        },
-      },
-    });
-  }
-  return prisma;
-}
+import { getDbPool } from './db';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -26,9 +10,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).end();
   }
 
-  try {
-    const prismaClient = await getPrismaClient();
+  const pool = getDbPool();
 
+  try {
     if (req.method === 'GET') {
       // Check both query and params for id (Express vs Vercel routing)
       const id = req.query.id || (req as any).params?.id;
@@ -41,26 +25,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return res.status(400).json({ error: '无效的历史记录 ID' });
         }
 
-        const record = await prismaClient.testHistory.findUnique({
-          where: { id: historyId },
-          include: {
-            agent: {
-              select: { id: true, name: true, region: true, modelName: true },
-            },
-          },
-        });
+        const result = await pool.query(
+          `SELECT h.*, 
+                  a.id as agent_id, a.name as agent_name, a.region as agent_region, a.model_name
+           FROM test_history h
+           LEFT JOIN agents a ON h.agent_id = a.id
+           WHERE h.id = $1`,
+          [historyId]
+        );
 
-        if (!record) {
+        if (result.rows.length === 0) {
           return res.status(404).json({ error: '历史记录不存在' });
         }
 
-        // Convert Decimal fields to numbers for JSON serialization
+        const record = result.rows[0];
+
         const formattedRecord = {
-          ...record,
-          successRate: typeof record.successRate === 'number' ? record.successRate : parseFloat(record.successRate?.toString() || '0'),
-          avgResponseTime: record.avgResponseTime ? (typeof record.avgResponseTime === 'number' ? record.avgResponseTime : parseFloat(record.avgResponseTime.toString())) : null,
-          // Use agentName from record, fallback to agent.name if needed
-          agentName: record.agentName || record.agent?.name || 'Unknown Agent',
+          id: record.id,
+          agentId: record.agent_id,
+          agentName: record.agent_name,
+          testDate: record.test_date,
+          totalQuestions: record.total_questions,
+          passedCount: record.passed_count,
+          failedCount: record.failed_count,
+          successRate: parseFloat(record.success_rate) || 0,
+          durationSeconds: record.duration_seconds,
+          avgResponseTime: record.avg_response_time ? parseFloat(record.avg_response_time) : null,
+          executionMode: record.execution_mode,
+          rpm: record.rpm,
+          timeoutSeconds: record.timeout_seconds,
+          retryCount: record.retry_count,
+          jsonData: record.json_data,
+          createdAt: record.created_at,
+          agent: record.agent_id ? {
+            id: record.agent_id,
+            name: record.agent_name,
+            region: record.agent_region,
+            modelName: record.model_name,
+          } : null,
         };
 
         return res.json(formattedRecord);
@@ -69,25 +71,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Otherwise, get list with pagination
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
-      const skip = (page - 1) * limit;
+      const offset = (page - 1) * limit;
 
-      const total = await prismaClient.testHistory.count();
-      const history = await prismaClient.testHistory.findMany({
-        orderBy: { testDate: 'desc' },
-        skip,
-        take: limit,
-        include: {
-          agent: {
-            select: { id: true, name: true, region: true },
-          },
-        },
-      });
+      const countResult = await pool.query('SELECT COUNT(*) FROM test_history');
+      const total = parseInt(countResult.rows[0].count);
 
-      // Convert Decimal fields to numbers for JSON serialization
-      const formattedHistory = history.map((record: any) => ({
-        ...record,
-        successRate: typeof record.successRate === 'number' ? record.successRate : parseFloat(record.successRate?.toString() || '0'),
-        avgResponseTime: record.avgResponseTime ? (typeof record.avgResponseTime === 'number' ? record.avgResponseTime : parseFloat(record.avgResponseTime.toString())) : null,
+      const result = await pool.query(
+        `SELECT h.*, 
+                a.id as agent_id, a.name as agent_name, a.region as agent_region
+         FROM test_history h
+         LEFT JOIN agents a ON h.agent_id = a.id
+         ORDER BY h.test_date DESC
+         LIMIT $1 OFFSET $2`,
+        [limit, offset]
+      );
+
+      const formattedHistory = result.rows.map((record: any) => ({
+        id: record.id,
+        agentId: record.agent_id,
+        agentName: record.agent_name,
+        testDate: record.test_date,
+        totalQuestions: record.total_questions,
+        passedCount: record.passed_count,
+        failedCount: record.failed_count,
+        successRate: parseFloat(record.success_rate) || 0,
+        durationSeconds: record.duration_seconds,
+        avgResponseTime: record.avg_response_time ? parseFloat(record.avg_response_time) : null,
+        executionMode: record.execution_mode,
+        rpm: record.rpm,
+        timeoutSeconds: record.timeout_seconds,
+        retryCount: record.retry_count,
+        jsonData: record.json_data,
+        createdAt: record.created_at,
+        agent: record.agent_id ? {
+          id: record.agent_id,
+          name: record.agent_name,
+          region: record.agent_region,
+        } : null,
       }));
 
       return res.json({
@@ -115,17 +135,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: '无效的历史记录 ID' });
       }
 
-      const history = await prismaClient.testHistory.findUnique({
-        where: { id: historyId },
-      });
+      const result = await pool.query(
+        'DELETE FROM test_history WHERE id = $1 RETURNING id',
+        [historyId]
+      );
 
-      if (!history) {
+      if (result.rows.length === 0) {
         return res.status(404).json({ error: '历史记录不存在' });
       }
-
-      await prismaClient.testHistory.delete({
-        where: { id: historyId },
-      });
 
       return res.json({ message: '删除成功' });
     }
@@ -137,7 +154,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       name: error.name,
       message: error.message,
       code: error.code,
-      meta: error.meta,
       stack: error.stack
     });
     return res.status(500).json({ 
@@ -145,5 +161,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       message: error.message,
       code: error.code
     });
+  } finally {
+    await pool.end();
   }
 }

@@ -1,21 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-
-// Initialize Prisma Client lazily
-let prisma: any;
-
-async function getPrismaClient() {
-  if (!prisma) {
-    const { PrismaClient } = await import('@prisma/client');
-    prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: process.env.DATABASE_URL,
-        },
-      },
-    });
-  }
-  return prisma;
-}
+import { getDbPool } from './db';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -26,19 +10,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).end();
   }
 
+  const pool = getDbPool();
+
   try {
-    const prismaClient = await getPrismaClient();
-
     if (req.method === 'GET') {
-      const agents = await prismaClient.agent.findMany({
-        orderBy: [{ lastUsed: 'desc' }, { name: 'asc' }],
-      });
+      const result = await pool.query(
+        'SELECT id, name, model_name, region, api_key, status, last_used, created_at, updated_at FROM agents ORDER BY created_at DESC'
+      );
 
-      const maskedAgents = agents.map((agent: any) => ({
-        ...agent,
-        apiKey: agent.apiKey.length > 14
-          ? `${agent.apiKey.slice(0, 10)}***${agent.apiKey.slice(-4)}`
+      const maskedAgents = result.rows.map((agent: any) => ({
+        id: agent.id,
+        name: agent.name,
+        modelName: agent.model_name,
+        region: agent.region,
+        apiKey: agent.api_key.length > 14
+          ? `${agent.api_key.slice(0, 10)}***${agent.api_key.slice(-4)}`
           : '***',
+        status: agent.status,
+        lastUsed: agent.last_used,
+        createdAt: agent.created_at,
+        updatedAt: agent.updated_at,
       }));
 
       return res.json(maskedAgents);
@@ -57,21 +48,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: '无效的区域' });
       }
 
-      const agent = await prismaClient.agent.create({
-        data: { 
-          name, 
-          modelName: modelName || null,
-          region, 
-          apiKey, 
-          status: 'active' 
-        },
-      });
+      const result = await pool.query(
+        `INSERT INTO agents (name, model_name, region, api_key, status) 
+         VALUES ($1, $2, $3, $4, 'active') 
+         RETURNING id, name, model_name, region, api_key, status, last_used, created_at, updated_at`,
+        [name, modelName || null, region, apiKey]
+      );
 
-      console.log('Created agent:', { id: agent.id, name: agent.name, modelName: agent.modelName });
+      const agent = result.rows[0];
+      console.log('Created agent:', { id: agent.id, name: agent.name, modelName: agent.model_name });
 
       return res.status(201).json({
-        ...agent,
-        apiKey: `${agent.apiKey.slice(0, 10)}***${agent.apiKey.slice(-4)}`,
+        id: agent.id,
+        name: agent.name,
+        modelName: agent.model_name,
+        region: agent.region,
+        apiKey: `${agent.api_key.slice(0, 10)}***${agent.api_key.slice(-4)}`,
+        status: agent.status,
+        lastUsed: agent.last_used,
+        createdAt: agent.created_at,
+        updatedAt: agent.updated_at,
       });
     }
 
@@ -82,7 +78,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       name: error.name,
       message: error.message,
       code: error.code,
-      meta: error.meta,
       stack: error.stack
     });
     return res.status(500).json({ 
@@ -90,5 +85,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       message: error.message,
       code: error.code
     });
+  } finally {
+    await pool.end();
   }
 }
