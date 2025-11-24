@@ -174,23 +174,51 @@ async function callQualityAgent(
     // Parse JSON from response (may contain markdown code blocks or extra text)
     let qualityResult: any = null;
     
-    // Try to extract JSON from response
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      try {
-        qualityResult = JSON.parse(jsonMatch[0]);
-      } catch (e) {
-        console.error('Failed to parse JSON:', e);
+    // Try multiple methods to extract JSON
+    // Method 1: Try to parse the entire response as JSON
+    try {
+      qualityResult = JSON.parse(responseText.trim());
+    } catch (e) {
+      // Method 2: Extract JSON from markdown code blocks
+      const codeBlockMatch = responseText.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+      if (codeBlockMatch) {
+        try {
+          qualityResult = JSON.parse(codeBlockMatch[1]);
+        } catch (e2) {
+          console.error('Failed to parse JSON from code block:', e2);
+        }
+      }
+      
+      // Method 3: Extract first JSON object from response
+      if (!qualityResult) {
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            qualityResult = JSON.parse(jsonMatch[0]);
+          } catch (e3) {
+            console.error('Failed to parse JSON from match:', e3);
+            console.error('JSON string:', jsonMatch[0].substring(0, 500));
+          }
+        }
       }
     }
 
     if (!qualityResult) {
+      console.error('Failed to parse quality result. Response text:', responseText.substring(0, 1000));
       return {
         success: false,
         error: '质检 Agent 返回格式不正确，无法解析 JSON',
-        reason: responseText,
+        reason: responseText.substring(0, 500), // Limit reason length
       };
     }
+    
+    console.log('Parsed quality result:', {
+      hasUnresolved: 'UNRESOLVED' in qualityResult,
+      hasPartiallyResolved: 'PARTIALLY_RESOLVED' in qualityResult,
+      hasFullyResolved: 'FULLY_RESOLVED' in qualityResult,
+      hasReason: 'reason' in qualityResult || 'reasoning' in qualityResult,
+      hasUserIntention: 'user_intention' in qualityResult || 'userIntention' in qualityResult,
+    });
 
     // Validate and normalize scores
     const scores = {
