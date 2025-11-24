@@ -18,10 +18,11 @@ async function callQualityAgent(
       ? 'https://api.gptbots.ai'
       : 'https://api.gptbots.cn';
 
-    // Format messages as user:xxx\nassistant:xxx
+    // Filter and prepare messages for quality agent
+    // We'll send structured messages directly to v2 API, not as formatted string
     console.log('Raw messages received:', JSON.stringify(messages, null, 2));
     
-    const formattedMessages = messages
+    const validMessages = messages
       .filter(msg => {
         const role = msg.role?.toUpperCase();
         const isValid = role === 'USER' || role === 'ASSISTANT';
@@ -33,37 +34,34 @@ async function callQualityAgent(
       .map(msg => {
         const role = msg.role?.toUpperCase();
         const content = msg.content || msg.text || '';
-        const formatted = `${role === 'USER' ? 'user' : 'assistant'}:${content}`;
-        console.log('Formatted message:', formatted.substring(0, 100) + (formatted.length > 100 ? '...' : ''));
-        return formatted;
+        return {
+          role: role === 'USER' ? 'user' : 'assistant',
+          content: content
+        };
       })
-      .join('\n');
+      .filter(msg => msg.content && msg.content.trim().length > 0); // Remove empty messages
 
-    console.log('Final formatted messages (first 500 chars):', formattedMessages.substring(0, 500));
-    console.log('Total formatted messages length:', formattedMessages.length);
-    console.log('Number of messages formatted:', messages.filter(msg => {
-      const role = msg.role?.toUpperCase();
-      return role === 'USER' || role === 'ASSISTANT';
-    }).length);
+    console.log('Valid messages prepared:', validMessages.length);
+    validMessages.forEach((msg, idx) => {
+      console.log(`Message ${idx + 1} [${msg.role}]:`, msg.content.substring(0, 100) + (msg.content.length > 100 ? '...' : ''));
+    });
 
-    if (!formattedMessages || formattedMessages.trim().length === 0) {
-      console.error('No valid formatted messages found');
+    if (validMessages.length === 0) {
+      console.error('No valid messages found');
       return {
         success: false,
         error: '没有有效的消息内容',
       };
     }
 
-    // Create conversation
-    const conversationResponse = await fetch(`${baseUrl}/v1/conversation`, {
+    // Create conversation using v2 API
+    const conversationResponse = await fetch(`${baseUrl}/v2/conversation`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${qualityAgentApiKey}`,
       },
-      body: JSON.stringify({
-        user_id: 'quality_check_' + Date.now()
-      }),
+      body: JSON.stringify({}),
     });
 
     if (!conversationResponse.ok) {
@@ -97,27 +95,22 @@ async function callQualityAgent(
       };
     }
 
-    // Send message to quality agent
+    // Send structured messages to quality agent using v2 API
+    // Format messages as required by v2 API: array of {role, content}
     const requestBody = {
       conversation_id: conversationId,
       response_mode: 'blocking',
-      messages: [{
-        role: 'user',
-        content: [{
-          type: 'text',
-          text: formattedMessages
-        }]
-      }]
+      messages: validMessages
     };
     
-    console.log('Sending formatted messages to quality agent:', {
+    console.log('Sending structured messages to quality agent:', {
       conversationId,
-      formattedMessagesLength: formattedMessages.length,
-      formattedMessagesPreview: formattedMessages.substring(0, 200) + (formattedMessages.length > 200 ? '...' : ''),
+      totalMessages: validMessages.length,
+      lastMessage: validMessages[validMessages.length - 1]?.content?.substring(0, 100),
       requestBodyPreview: JSON.stringify(requestBody).substring(0, 500),
     });
     
-    const messageResponse = await fetch(`${baseUrl}/v1/conversation/message`, {
+    const messageResponse = await fetch(`${baseUrl}/v2/conversation/message`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -146,15 +139,18 @@ async function callQualityAgent(
     }
 
     const messageData = await messageResponse.json();
-    console.log('Message response received:', { 
+    console.log('Message response received (v2 API):', { 
       hasOutput: !!messageData.output,
       outputLength: messageData.output?.length || 0,
+      messageId: messageData.message_id,
+      fullResponse: JSON.stringify(messageData).substring(0, 1000),
     });
 
-    // Extract response text - try multiple possible response formats
+    // Extract response text from v2 API response format
+    // v2 API format: { output: [{ content: { text: "..." } }] }
     let responseText = '';
     
-    // Format 1: messageData.output array
+    // Format 1: v2 API - messageData.output array with content.text
     if (messageData.output && Array.isArray(messageData.output) && messageData.output.length > 0) {
       const firstOutput = messageData.output[0];
       if (firstOutput.content) {
@@ -172,12 +168,12 @@ async function callQualityAgent(
       }
     }
     
-    // Format 2: messageData.text (direct text field)
+    // Format 2: Fallback - messageData.text (direct text field)
     if (!responseText && messageData.text) {
       responseText = messageData.text;
     }
     
-    // Format 3: messageData.content (direct content field)
+    // Format 3: Fallback - messageData.content (direct content field)
     if (!responseText && messageData.content) {
       if (typeof messageData.content === 'string') {
         responseText = messageData.content;
@@ -187,6 +183,7 @@ async function callQualityAgent(
     }
 
     console.log('Extracted response text length:', responseText.length);
+    console.log('Extracted response text preview:', responseText.substring(0, 500));
     
     if (!responseText) {
       console.error('No response text found in message data:', JSON.stringify(messageData, null, 2));
@@ -243,6 +240,9 @@ async function callQualityAgent(
       hasFullyResolved: 'FULLY_RESOLVED' in qualityResult,
       hasReason: 'reason' in qualityResult || 'reasoning' in qualityResult,
       hasUserIntention: 'user_intention' in qualityResult || 'userIntention' in qualityResult,
+      userIntention: qualityResult.user_intention || qualityResult.userIntention || 'NOT_FOUND',
+      reasonPreview: (qualityResult.reason || qualityResult.reasoning || '').substring(0, 200),
+      fullResult: JSON.stringify(qualityResult).substring(0, 1000),
     });
 
     // Validate and normalize scores
