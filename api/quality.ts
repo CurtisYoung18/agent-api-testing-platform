@@ -54,14 +54,16 @@ async function callQualityAgent(
       };
     }
 
-    // Create conversation using v2 API
-    const conversationResponse = await fetch(`${baseUrl}/v2/conversation`, {
+    // Create conversation using v1 API (v2 doesn't have conversation creation endpoint)
+    const conversationResponse = await fetch(`${baseUrl}/v1/conversation`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${qualityAgentApiKey}`,
       },
-      body: JSON.stringify({}),
+      body: JSON.stringify({
+        user_id: 'quality_check_' + Date.now()
+      }),
     });
 
     if (!conversationResponse.ok) {
