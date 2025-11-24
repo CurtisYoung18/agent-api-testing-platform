@@ -97,18 +97,31 @@ async function callQualityAgent(
       };
     }
 
-    // Send structured messages to quality agent using v2 API
-    // Format messages as required by v2 API: array of {role, content}
+    // Format messages as user:xxx\nassistant:xxx for quality agent
+    // According to QUALITY_AGENT_PROMPT.md, the quality agent expects formatted string
+    const formattedMessagesString = validMessages
+      .map(msg => `${msg.role}:${msg.content}`)
+      .join('\n');
+    
+    console.log('Formatted messages string for quality agent:', {
+      length: formattedMessagesString.length,
+      preview: formattedMessagesString.substring(0, 300),
+    });
+    
+    // Send formatted string as a single user message to quality agent
+    // The quality agent's system prompt expects this format
     const requestBody = {
       conversation_id: conversationId,
       response_mode: 'blocking',
-      messages: validMessages
+      messages: [{
+        role: 'user',
+        content: formattedMessagesString
+      }]
     };
     
-    console.log('Sending structured messages to quality agent:', {
+    console.log('Sending formatted messages to quality agent:', {
       conversationId,
-      totalMessages: validMessages.length,
-      lastMessage: validMessages[validMessages.length - 1]?.content?.substring(0, 100),
+      formattedStringLength: formattedMessagesString.length,
       requestBodyPreview: JSON.stringify(requestBody).substring(0, 500),
     });
     
