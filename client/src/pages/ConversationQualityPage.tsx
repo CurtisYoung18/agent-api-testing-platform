@@ -24,6 +24,7 @@ interface ConversationWithQuality extends Conversation {
   messages?: Message[]
   showDetail?: boolean
   manualReview?: boolean
+  appliedQuality?: QualityTag // Applied quality tag
 }
 
 const tagConfig: Record<QualityTag, { label: string; color: string; icon: any; bgColor: string }> = {
@@ -54,6 +55,7 @@ export function ConversationQualityPage() {
   const [page, setPage] = useState(1)
   const [expandedConversationId, setExpandedConversationId] = useState<string | null>(null)
   const [manualReviewConversationId, setManualReviewConversationId] = useState<string | null>(null)
+  const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
 
   // Fetch agents
   const { data: agents, isLoading: agentsLoading } = useQuery({
@@ -128,9 +130,27 @@ export function ConversationQualityPage() {
         pageSize: 100,
       })
 
+      // Messages are already sorted by backend, but ensure they're sorted
+      const sortedMessages = [...data.list].sort((a, b) => {
+        const timeA = a.created_at || 0
+        const timeB = b.created_at || 0
+        return timeA - timeB
+      })
+
+      // Check if conversation has applied quality from last assistant message
+      const lastAssistantMessage = sortedMessages
+        .filter(msg => msg.role === 'assistant' || msg.role === 'ASSISTANT')
+        .pop()
+      
+      const appliedQuality = lastAssistantMessage?.quality as QualityTag | undefined
+
       setConversations(prev => prev.map(conv => 
         conv.conversation_id === conversationId
-          ? { ...conv, messages: data.list }
+          ? { 
+              ...conv, 
+              messages: sortedMessages,
+              appliedQuality: appliedQuality || conv.appliedQuality // Preserve existing or use from API
+            }
           : conv
       ))
     } catch (error) {
@@ -212,7 +232,8 @@ export function ConversationQualityPage() {
       .find(msg => msg.role === 'assistant' || msg.role === 'ASSISTANT')
 
     if (!lastAssistantMessage?.message_id) {
-      alert('未找到回复消息 ID')
+      setToastMessage({ type: 'error', message: '未找到回复消息 ID' })
+      setTimeout(() => setToastMessage(null), 3000)
       return
     }
 
@@ -224,13 +245,20 @@ export function ConversationQualityPage() {
       
       setConversations(prev => prev.map(c =>
         c.conversation_id === conversationId
-          ? { ...c, manualReview: false }
+          ? { 
+              ...c, 
+              manualReview: false,
+              appliedQuality: quality,
+              qualityScores: undefined // Clear AI scores after applying
+            }
           : c
       ))
       setManualReviewConversationId(null)
-      alert('质检结果已提交')
+      setToastMessage({ type: 'success', message: `已应用质检结果：${tagConfig[quality].label}` })
+      setTimeout(() => setToastMessage(null), 3000)
     } catch (error: any) {
-      alert(`提交失败: ${error.message || '未知错误'}`)
+      setToastMessage({ type: 'error', message: `提交失败: ${error.message || '未知错误'}` })
+      setTimeout(() => setToastMessage(null), 3000)
     }
   }
 
@@ -409,8 +437,27 @@ export function ConversationQualityPage() {
                             </div>
                           </div>
 
-                          {/* Quality Result */}
-                          {conversation.qualityScores && highestQuality && (
+                          {/* Applied Quality Tag */}
+                          {conversation.appliedQuality && (
+                            <div className="flex items-center gap-2">
+                              {(() => {
+                                const tag = conversation.appliedQuality!
+                                const config = tagConfig[tag]
+                                const IconComponent = config.icon
+                                return (
+                                  <div
+                                    className={`flex items-center gap-1 px-3 py-1 rounded-lg border ${config.bgColor} ${config.color}`}
+                                  >
+                                    <IconComponent className="w-4 h-4" />
+                                    <span className="text-sm font-medium">{config.label}</span>
+                                  </div>
+                                )
+                              })()}
+                            </div>
+                          )}
+
+                          {/* AI Quality Scores (only show if not applied yet) */}
+                          {!conversation.appliedQuality && conversation.qualityScores && highestQuality && (
                             <div className="flex items-center gap-3">
                               <div className="flex gap-2">
                                 {Object.entries(conversation.qualityScores).map(([key, value]) => {
@@ -583,6 +630,35 @@ export function ConversationQualityPage() {
           )}
         </div>
       )}
+
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            className={`fixed bottom-6 right-6 z-50 px-6 py-4 rounded-lg shadow-lg flex items-center gap-3 ${
+              toastMessage.type === 'success'
+                ? 'bg-green-500 text-white'
+                : 'bg-red-500 text-white'
+            }`}
+          >
+            {toastMessage.type === 'success' ? (
+              <CheckCircleIcon className="w-6 h-6" />
+            ) : (
+              <XCircleIcon className="w-6 h-6" />
+            )}
+            <span className="font-medium">{toastMessage.message}</span>
+            <button
+              onClick={() => setToastMessage(null)}
+              className="ml-2 hover:opacity-80"
+            >
+              <XMarkIcon className="w-5 h-5" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Info Section */}
       {!selectedAgentId && (

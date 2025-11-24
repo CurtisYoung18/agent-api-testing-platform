@@ -137,6 +137,7 @@ export interface Message {
   text?: string;
   type?: string;
   created_at?: number;
+  quality?: 'UNRESOLVED' | 'PARTIALLY_RESOLVED' | 'FULLY_RESOLVED'; // Quality tag if available
 }
 
 export interface MessagesResponse {

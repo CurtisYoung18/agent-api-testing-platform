@@ -147,6 +147,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             text = texts.join(' ');
           }
           
+          // Extract quality tag if available
+          // Note: GPTBots API may not directly return quality in message response
+          // This is a placeholder for future API support
+          let quality: string | undefined = undefined;
+          if (msg.quality) {
+            quality = msg.quality;
+          } else if (msg.feedback && msg.feedback.quality) {
+            quality = msg.feedback.quality;
+          }
+          
           return {
             message_id: msg.message_id,
             role: msg.role,
@@ -154,7 +164,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             text: text,
             type: msg.content?.[0]?.branch_content?.[0]?.type || 'text',
             created_at: msg.create_time,
+            quality: quality, // Quality tag if available
           };
+        });
+        
+        // Sort by time (oldest first)
+        transformedMessages.sort((a: any, b: any) => {
+          return (a.created_at || 0) - (b.created_at || 0);
         });
         
         return res.json({
