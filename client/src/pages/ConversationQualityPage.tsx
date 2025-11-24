@@ -122,8 +122,8 @@ export function ConversationQualityPage() {
   })
 
   // Fetch messages for a conversation
-  const fetchMessages = async (conversationId: string) => {
-    if (!selectedAgentId) return
+  const fetchMessages = async (conversationId: string): Promise<Message[] | null> => {
+    if (!selectedAgentId) return null
 
     try {
       const data = await conversationsApi.getMessages({
@@ -156,8 +156,11 @@ export function ConversationQualityPage() {
             }
           : conv
       ))
+
+      return sortedMessages
     } catch (error) {
       console.error('Failed to fetch messages:', error)
+      return null
     }
   }
 
@@ -199,17 +202,18 @@ export function ConversationQualityPage() {
     }
 
     for (const conv of selectedConversations) {
-      if (!conv.messages || conv.messages.length === 0) {
-        await fetchMessages(conv.conversation_id)
-        // Wait a bit for messages to load
-        await new Promise(resolve => setTimeout(resolve, 500))
+      let messages = conv.messages
+      
+      // If messages are not loaded, fetch them first
+      if (!messages || messages.length === 0) {
+        messages = await fetchMessages(conv.conversation_id)
       }
 
-      const updatedConv = conversations.find(c => c.conversation_id === conv.conversation_id)
-      if (updatedConv?.messages) {
+      // Only proceed if we have messages
+      if (messages && messages.length > 0) {
         try {
           const result = await qualityCheckMutation.mutateAsync({
-            messages: updatedConv.messages,
+            messages,
           })
 
           setConversations(prev => prev.map(c =>
@@ -441,28 +445,86 @@ export function ConversationQualityPage() {
                       </div>
 
                       {/* Content */}
-                      <div className="flex-1">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <h3 className="font-semibold text-text-primary">
-                              {conversation.subject || '无主题'}
-                            </h3>
-                            <div className="mt-1 flex flex-wrap items-center gap-4 text-sm text-text-secondary">
-                              <span>用户: {conversation.user_id}</span>
-                              <span>消息数: {conversation.message_count}</span>
-                              <span>
-                                时间: {new Date(conversation.recent_chat_time).toLocaleString('zh-CN')}
-                              </span>
-                            </div>
-                            
-                            {/* User Intention */}
-                            {conversation.userIntention && (
-                              <div className="mt-2 text-sm">
-                                <span className="text-text-secondary font-medium">用户意图：</span>
-                                <span className="text-text-primary">{conversation.userIntention}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="space-y-3">
+                          {/* Header Row */}
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                              <h3 className="font-semibold text-text-primary break-words">
+                                {conversation.subject || '无主题'}
+                              </h3>
+                              <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
+                                <div className="text-text-secondary">
+                                  <span className="font-medium">用户：</span>
+                                  <span className="text-text-primary">{conversation.user_id}</span>
+                                </div>
+                                <div className="text-text-secondary">
+                                  <span className="font-medium">消息数：</span>
+                                  <span className="text-text-primary">{conversation.message_count}</span>
+                                </div>
+                                <div className="text-text-secondary">
+                                  <span className="font-medium">时间：</span>
+                                  <span className="text-text-primary">
+                                    {new Date(conversation.recent_chat_time).toLocaleString('zh-CN')}
+                                  </span>
+                                </div>
                               </div>
-                            )}
-                          </div>
+                            </div>
+
+                          {/* User Intention */}
+                          {conversation.userIntention && (
+                            <div className="space-y-2">
+                              <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                <div className="text-sm">
+                                  <span className="text-blue-700 font-medium">用户意图：</span>
+                                  <span className="text-blue-900 ml-2">{conversation.userIntention}</span>
+                                </div>
+                              </div>
+                              
+                              {/* Reason Display Button - placed right after user intention */}
+                              {conversation.qualityReason && (
+                                <div>
+                                  <button
+                                    onClick={() => {
+                                      setConversations(prev => prev.map(c =>
+                                        c.conversation_id === conversation.conversation_id
+                                          ? { ...c, showReason: !c.showReason }
+                                          : c
+                                      ))
+                                    }}
+                                    className="w-full flex items-center justify-between text-sm text-primary-600 hover:text-primary-700 py-2 px-3 rounded-lg hover:bg-primary-50 transition-colors border border-primary-200"
+                                  >
+                                    <span className="font-medium">
+                                      {conversation.showReason ? '隐藏判断原因' : '查看判断原因'}
+                                    </span>
+                                    {conversation.showReason ? (
+                                      <ChevronUpIcon className="w-4 h-4" />
+                                    ) : (
+                                      <ChevronDownIcon className="w-4 h-4" />
+                                    )}
+                                  </button>
+                                  <AnimatePresence>
+                                    {conversation.showReason && (
+                                      <motion.div
+                                        initial={{ opacity: 0, height: 0 }}
+                                        animate={{ opacity: 1, height: 'auto' }}
+                                        exit={{ opacity: 0, height: 0 }}
+                                        className="mt-2 p-4 bg-gradient-to-br from-gray-50 to-blue-50 rounded-lg border border-gray-200 shadow-sm"
+                                      >
+                                        <div className="text-sm text-text-primary leading-relaxed whitespace-pre-wrap">
+                                          {conversation.qualityReason.split('\n').map((line, idx) => (
+                                            <div key={idx} className="mb-2 last:mb-0">
+                                              {line}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </motion.div>
+                                    )}
+                                  </AnimatePresence>
+                                </div>
+                              )}
+                            </div>
+                          )}
 
                           {/* Applied Quality Tag */}
                           {conversation.appliedQuality && (
@@ -473,7 +535,7 @@ export function ConversationQualityPage() {
                                 const IconComponent = config.icon
                                 return (
                                   <div
-                                    className={`flex items-center gap-1 px-3 py-1 rounded-lg border ${config.bgColor} ${config.color}`}
+                                    className={`flex items-center gap-1 px-3 py-1.5 rounded-lg border ${config.bgColor} ${config.color}`}
                                   >
                                     <IconComponent className="w-4 h-4" />
                                     <span className="text-sm font-medium">{config.label}</span>
@@ -485,9 +547,9 @@ export function ConversationQualityPage() {
 
                           {/* AI Quality Scores (only show if not applied yet) */}
                           {!conversation.appliedQuality && conversation.qualityScores && highestQuality && (
-                            <div className="space-y-2">
-                              <div className="flex items-center gap-3">
-                                <div className="flex gap-2">
+                            <div className="space-y-3">
+                              <div className="flex flex-wrap items-center gap-3">
+                                <div className="flex flex-wrap gap-2">
                                   {Object.entries(conversation.qualityScores).map(([key, value]) => {
                                     const tag = key as QualityTag
                                     const config = tagConfig[tag]
@@ -495,11 +557,11 @@ export function ConversationQualityPage() {
                                     return (
                                       <div
                                         key={key}
-                                        className={`flex items-center gap-1 px-2 py-1 rounded border ${config.bgColor} ${config.color}`}
+                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border ${config.bgColor} ${config.color}`}
                                       >
                                         <IconComponent className="w-4 h-4" />
                                         <span className="text-xs font-medium">{config.label}</span>
-                                        <span className="text-xs">{value}%</span>
+                                        <span className="text-xs font-bold">{value}%</span>
                                       </div>
                                     )
                                   })}
@@ -510,54 +572,16 @@ export function ConversationQualityPage() {
                                     submitQuality(conversation.conversation_id, quality)
                                   }}
                                   disabled={qualitySubmitMutation.isPending}
-                                  className={`flex items-center gap-1 px-3 py-1 rounded-lg border ${tagConfig[highestQuality].bgColor} ${tagConfig[highestQuality].color} hover:opacity-80 transition-opacity`}
+                                  className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg border ${tagConfig[highestQuality].bgColor} ${tagConfig[highestQuality].color} hover:opacity-80 transition-opacity shadow-sm`}
                                 >
                                   <CheckIcon className="w-4 h-4" />
                                   <span className="text-sm font-medium">应用 {tagConfig[highestQuality].label}</span>
                                 </button>
                               </div>
-                              
-                              {/* Reason Display */}
-                              {conversation.qualityReason && (
-                                <div className="mt-2">
-                                  <button
-                                    onClick={() => {
-                                      setConversations(prev => prev.map(c =>
-                                        c.conversation_id === conversation.conversation_id
-                                          ? { ...c, showReason: !c.showReason }
-                                          : c
-                                      ))
-                                    }}
-                                    className="text-sm text-primary-600 hover:text-primary-700 flex items-center gap-1"
-                                  >
-                                    {conversation.showReason ? (
-                                      <>
-                                        <ChevronUpIcon className="w-4 h-4" />
-                                        隐藏判断原因
-                                      </>
-                                    ) : (
-                                      <>
-                                        <ChevronDownIcon className="w-4 h-4" />
-                                        查看判断原因
-                                      </>
-                                    )}
-                                  </button>
-                                  <AnimatePresence>
-                                    {conversation.showReason && (
-                                      <motion.div
-                                        initial={{ opacity: 0, height: 0 }}
-                                        animate={{ opacity: 1, height: 'auto' }}
-                                        exit={{ opacity: 0, height: 0 }}
-                                        className="mt-2 p-3 bg-gray-50 rounded-lg border border-gray-200 text-sm text-text-secondary"
-                                      >
-                                        {conversation.qualityReason}
-                                      </motion.div>
-                                    )}
-                                  </AnimatePresence>
-                                </div>
-                              )}
                             </div>
                           )}
+                        </div>
+                      </div>
 
                           {/* Actions */}
                           <div className="flex items-center gap-2">
@@ -700,6 +724,47 @@ export function ConversationQualityPage() {
         </div>
       )}
 
+      {/* Floating Action Button - Show when scrolled down */}
+      <AnimatePresence>
+        {showFloatingButton && selectedCount > 0 && selectedQualityAgentId && (
+          <motion.div
+            initial={{ opacity: 0, y: 100 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 100 }}
+            className="fixed bottom-6 right-6 z-40"
+          >
+            <div className="bg-white rounded-lg shadow-xl border border-primary-200 p-4">
+              <div className="flex items-center gap-4">
+                <div className="text-sm text-text-secondary">
+                  已选择 <span className="font-semibold text-primary-600">{selectedCount}</span> 个会话
+                </div>
+                <button
+                  onClick={() => {
+                    runQualityCheck()
+                    // Scroll to top to see results
+                    window.scrollTo({ top: 0, behavior: 'smooth' })
+                  }}
+                  disabled={qualityCheckMutation.isPending}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors shadow-md"
+                >
+                  {qualityCheckMutation.isPending ? (
+                    <>
+                      <ArrowPathIcon className="w-5 h-5 animate-spin" />
+                      质检中...
+                    </>
+                  ) : (
+                    <>
+                      <PlayIcon className="w-5 h-5" />
+                      运行质检
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Toast Notification */}
       <AnimatePresence>
         {toastMessage && (
@@ -707,7 +772,7 @@ export function ConversationQualityPage() {
             initial={{ opacity: 0, y: 50, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.9 }}
-            className={`fixed bottom-6 right-6 z-50 px-6 py-4 rounded-lg shadow-lg flex items-center gap-3 ${
+            className={`fixed bottom-6 left-6 z-50 px-6 py-4 rounded-lg shadow-lg flex items-center gap-3 ${
               toastMessage.type === 'success'
                 ? 'bg-green-500 text-white'
                 : 'bg-red-500 text-white'
