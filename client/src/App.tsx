@@ -4,6 +4,7 @@ import { TestPage } from './pages/TestPage'
 import { AgentsPage } from './pages/AgentsPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { ComparePage } from './pages/ComparePage'
+import { ConversationQualityPage } from './pages/ConversationQualityPage'
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
           <Route path="/agents" element={<AgentsPage />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/compare" element={<ComparePage />} />
+          <Route path="/quality" element={<ConversationQualityPage />} />
         </Routes>
       </Layout>
     </Router>
