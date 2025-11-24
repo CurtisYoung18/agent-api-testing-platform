@@ -262,39 +262,16 @@ async function submitQualityToGPTBots(
       quality,
     });
 
-    // Try to use message feedback API first
-    // Map our quality tags to GPTBots feedback types
-    // Note: GPTBots feedback API only supports POSITIVE, NEGATIVE, CANCELED
-    // We'll try to use a custom approach or check if there's a quality-specific endpoint
-    
-    // Option 1: Try using feedback API with quality in a custom field
-    // First, let's try to update message with quality tag directly
-    // Check if GPTBots supports updating message metadata
-    
-    // Try calling the message feedback endpoint
-    // IMPORTANT: GPTBots feedback API only supports POSITIVE/NEGATIVE/CANCELED
-    // It does NOT support UNRESOLVED/PARTIALLY_RESOLVED/FULLY_RESOLVED quality tags
-    // We'll map our quality tags to feedback types as a workaround:
-    // - FULLY_RESOLVED -> POSITIVE (用户满意)
-    // - PARTIALLY_RESOLVED -> NEGATIVE (部分解决，用户可能不太满意)
-    // - UNRESOLVED -> NEGATIVE (未解决，用户不满意)
-    // 
-    // NOTE: This means GPTBots platform will only show POSITIVE/NEGATIVE feedback,
-    // not the detailed quality tags. The quality tags are stored in our system
-    // and displayed in our UI, but may not be visible in GPTBots platform.
-    // 
-    // TODO: Check if GPTBots has a separate API endpoint for setting quality tags,
-    // or if they plan to add support for quality tags in the feedback API.
-    const feedbackType = quality === 'FULLY_RESOLVED' ? 'POSITIVE' : 'NEGATIVE';
-    
-    console.log('Calling GPTBots feedback API:', {
+    // Use GPTBots quality API endpoint: /v1/message/quality
+    // This API supports: NONE, UNRESOLVED, PARTIALLY_RESOLVED, FULLY_RESOLVED
+    // Documentation: https://www.gptbots.ai/src/zh_CN/API%20文档/对话API.md
+    console.log('Calling GPTBots quality API:', {
       answerId,
       quality,
-      feedbackType,
-      note: 'GPTBots only supports POSITIVE/NEGATIVE, not detailed quality tags',
+      endpoint: '/v1/message/quality',
     });
     
-    const feedbackResponse = await fetch(`${baseUrl}/v1/message/feedback`, {
+    const qualityResponse = await fetch(`${baseUrl}/v1/message/quality`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -302,12 +279,12 @@ async function submitQualityToGPTBots(
       },
       body: JSON.stringify({
         answer_id: answerId,
-        feedback: feedbackType,
+        quality: quality, // Direct mapping: UNRESOLVED, PARTIALLY_RESOLVED, FULLY_RESOLVED
       }),
     });
 
-    if (!feedbackResponse.ok) {
-      const errorText = await feedbackResponse.text().catch(() => '');
+    if (!qualityResponse.ok) {
+      const errorText = await qualityResponse.text().catch(() => '');
       let errorData: any = {};
       try {
         errorData = JSON.parse(errorText);
@@ -315,25 +292,26 @@ async function submitQualityToGPTBots(
         console.error('Failed to parse error response:', errorText);
       }
       
-      console.error('Failed to submit feedback to GPTBots:', {
-        status: feedbackResponse.status,
-        statusText: feedbackResponse.statusText,
+      console.error('Failed to submit quality to GPTBots:', {
+        status: qualityResponse.status,
+        statusText: qualityResponse.statusText,
         error: errorData,
+        answerId,
+        quality,
       });
       
-      // Don't fail completely - maybe the API doesn't support quality tags yet
-      // Log the error but continue
-      console.warn('GPTBots feedback API may not support quality tags. Error:', errorData.message || errorText);
-      
-      // Return success anyway since we've stored it in our system
-      // The quality tag will be shown in our UI even if GPTBots doesn't support it yet
       return {
-        success: true,
+        success: false,
+        error: errorData.message || `提交质检结果失败 (${qualityResponse.status})`,
       };
     }
 
-    const feedbackData = await feedbackResponse.json();
-    console.log('Feedback submitted successfully:', feedbackData);
+    const qualityData = await qualityResponse.json();
+    console.log('Quality submitted successfully to GPTBots:', {
+      affectCount: qualityData.affectCount,
+      answerId,
+      quality,
+    });
     
     return {
       success: true,
@@ -343,10 +321,9 @@ async function submitQualityToGPTBots(
     console.error('Submit quality error:', error);
     console.error('Error stack:', error.stack);
     
-    // Don't fail completely - log error but return success
-    // The quality is stored in our system and will be shown in UI
     return {
-      success: true, // Return success to not block the UI update
+      success: false,
+      error: error.message || '提交质检结果失败',
     };
   }
 }
