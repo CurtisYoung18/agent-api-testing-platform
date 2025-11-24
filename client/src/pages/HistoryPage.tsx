@@ -18,6 +18,7 @@ import {
   ExclamationTriangleIcon,
   CpuChipIcon,
 } from '@heroicons/react/24/outline'
+import { Checkbox } from '@/components/Checkbox'
 
 export function HistoryPage() {
   const queryClient = useQueryClient()
@@ -176,17 +177,43 @@ export function HistoryPage() {
             加载中...
           </div>
         ) : data && data.data.length > 0 ? (
-          data.data.map((record) => (
-            <div key={record.id} className="glass-card p-6 hover:shadow-glass-hover transition-all duration-200">
+          data.data.map((record) => {
+            const isSelected = selectedForCompare.includes(record.id)
+            return (
+            <div
+              key={record.id}
+              className={`glass-card p-6 transition-all duration-200 cursor-pointer ${
+                isCompareMode && isSelected
+                  ? 'ring-2 ring-primary-400 bg-primary-50 shadow-lg'
+                  : isCompareMode
+                  ? 'hover:shadow-glass-hover hover:ring-1 hover:ring-primary-200'
+                  : 'hover:shadow-glass-hover'
+              }`}
+              onClick={(e) => {
+                if (!isCompareMode) return
+                // Don't trigger if clicking on buttons or links
+                const target = e.target as HTMLElement
+                if (
+                  target.tagName === 'BUTTON' ||
+                  target.closest('button') ||
+                  target.tagName === 'A' ||
+                  target.closest('a')
+                ) {
+                  return
+                }
+                toggleSelectForCompare(record.id, record.totalQuestions)
+              }}
+            >
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-start space-x-4">
                   {isCompareMode && (
-                    <input
-                      type="checkbox"
-                      checked={selectedForCompare.includes(record.id)}
-                      onChange={() => toggleSelectForCompare(record.id, record.totalQuestions)}
-                      className="mt-1 w-5 h-5 text-primary-500 rounded border-gray-300 focus:ring-primary-500"
-                    />
+                    <div className="mt-0.5" onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={isSelected}
+                        onChange={() => toggleSelectForCompare(record.id, record.totalQuestions)}
+                        size="md"
+                      />
+                    </div>
                   )}
                   <div>
                   <p className="text-sm text-text-tertiary">
@@ -269,7 +296,8 @@ export function HistoryPage() {
                 </button>
               </div>
             </div>
-          ))
+            )
+          })
         ) : (
           <div className="glass-card p-12 text-center">
             <ChartBarIcon className="w-16 h-16 text-text-tertiary mx-auto mb-4" />

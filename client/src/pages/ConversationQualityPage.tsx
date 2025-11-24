@@ -14,6 +14,7 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/outline'
 import { agentsApi, conversationsApi, qualityApi, type Conversation, type Message, type QualityScores } from '@/lib/api'
+import { Checkbox } from '@/components/Checkbox'
 
 type QualityTag = 'UNRESOLVED' | 'PARTIALLY_RESOLVED' | 'FULLY_RESOLVED'
 
@@ -363,16 +364,34 @@ export function ConversationQualityPage() {
                     key={conversation.conversation_id}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="border border-primary-200 rounded-lg p-4 hover:shadow-md transition-shadow bg-white"
+                    className={`border rounded-lg p-4 transition-all duration-200 bg-white cursor-pointer ${
+                      conversation.selected
+                        ? 'border-primary-400 bg-primary-50 shadow-md'
+                        : 'border-primary-200 hover:border-primary-300 hover:shadow-md'
+                    }`}
+                    onClick={(e) => {
+                      // Don't trigger if clicking on buttons or links
+                      const target = e.target as HTMLElement
+                      if (
+                        target.tagName === 'BUTTON' ||
+                        target.closest('button') ||
+                        target.tagName === 'A' ||
+                        target.closest('a')
+                      ) {
+                        return
+                      }
+                      toggleSelection(conversation.conversation_id)
+                    }}
                   >
                     <div className="flex items-start gap-4">
                       {/* Checkbox */}
-                      <input
-                        type="checkbox"
-                        checked={conversation.selected || false}
-                        onChange={() => toggleSelection(conversation.conversation_id)}
-                        className="mt-1 w-5 h-5 text-primary-500 rounded focus:ring-primary-400"
-                      />
+                      <div className="mt-0.5" onClick={(e) => e.stopPropagation()}>
+                        <Checkbox
+                          checked={conversation.selected || false}
+                          onChange={() => toggleSelection(conversation.conversation_id)}
+                          size="md"
+                        />
+                      </div>
 
                       {/* Content */}
                       <div className="flex-1">
