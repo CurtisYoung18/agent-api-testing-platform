@@ -60,6 +60,7 @@ export function ConversationQualityPage() {
   const [manualReviewConversationId, setManualReviewConversationId] = useState<string | null>(null)
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [loadingMessagesId, setLoadingMessagesId] = useState<string | null>(null)
+  const [isQualityChecking, setIsQualityChecking] = useState(false)
 
   // Fetch agents
   const { data: agents, isLoading: agentsLoading } = useQuery({
@@ -198,47 +199,54 @@ export function ConversationQualityPage() {
 
   // Run quality check for selected conversations
   const runQualityCheck = async () => {
-    const selectedConversations = conversations.filter(c => c.selected)
+    // Immediately set loading state to provide instant feedback
+    setIsQualityChecking(true)
     
-    if (selectedConversations.length === 0) {
-      alert('请至少选择一个对话')
-      return
-    }
-
-    if (!selectedQualityAgentId) {
-      alert('请选择质检 Agent')
-      return
-    }
-
-    for (const conv of selectedConversations) {
-      let messages = conv.messages
+    try {
+      const selectedConversations = conversations.filter(c => c.selected)
       
-      // If messages are not loaded, fetch them first
-      if (!messages || messages.length === 0) {
-        messages = await fetchMessages(conv.conversation_id)
+      if (selectedConversations.length === 0) {
+        alert('请至少选择一个对话')
+        return
       }
 
-      // Only proceed if we have messages
-      if (messages && messages.length > 0) {
-        try {
-          const result = await qualityCheckMutation.mutateAsync({
-            messages,
-          })
+      if (!selectedQualityAgentId) {
+        alert('请选择质检 Agent')
+        return
+      }
 
-          setConversations(prev => prev.map(c =>
-            c.conversation_id === conv.conversation_id
-              ? { 
-                  ...c, 
-                  qualityScores: result.scores,
-                  qualityReason: result.reason,
-                  userIntention: result.userIntention
-                }
-              : c
-          ))
-        } catch (error) {
-          console.error(`Failed to check quality for ${conv.conversation_id}:`, error)
+      for (const conv of selectedConversations) {
+        let messages = conv.messages
+        
+        // If messages are not loaded, fetch them first
+        if (!messages || messages.length === 0) {
+          messages = await fetchMessages(conv.conversation_id)
+        }
+
+        // Only proceed if we have messages
+        if (messages && messages.length > 0) {
+          try {
+            const result = await qualityCheckMutation.mutateAsync({
+              messages,
+            })
+
+            setConversations(prev => prev.map(c =>
+              c.conversation_id === conv.conversation_id
+                ? { 
+                    ...c, 
+                    qualityScores: result.scores,
+                    qualityReason: result.reason,
+                    userIntention: result.userIntention
+                  }
+                : c
+            ))
+          } catch (error) {
+            console.error(`Failed to check quality for ${conv.conversation_id}:`, error)
+          }
         }
       }
+    } finally {
+      setIsQualityChecking(false)
     }
   }
 
@@ -385,10 +393,10 @@ export function ConversationQualityPage() {
               {selectedCount > 0 && selectedQualityAgentId && (
                 <button
                   onClick={runQualityCheck}
-                  disabled={qualityCheckMutation.isPending}
+                  disabled={isQualityChecking || qualityCheckMutation.isPending}
                   className="flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
                 >
-                  {qualityCheckMutation.isPending ? (
+                  {(isQualityChecking || qualityCheckMutation.isPending) ? (
                     <>
                       <ArrowPathIcon className="w-5 h-5 animate-spin" />
                       质检中...
