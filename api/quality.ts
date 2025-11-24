@@ -1,0 +1,262 @@
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { getDbPool } from './db.js';
+
+// Quality check API: call quality agent and submit quality results
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  const pool = getDbPool();
+
+  try {
+    if (req.method === 'POST') {
+      const { action, agentId, qualityAgentId, conversationId, messages, answerId, quality } = req.body;
+
+      if (action === 'check') {
+        // Call quality agent to analyze conversation
+        if (!agentId || !qualityAgentId || !messages || !Array.isArray(messages)) {
+          return res.status(400).json({ error: '缺少必要参数' });
+        }
+
+        // Get quality agent info
+        const qualityAgentResult = await pool.query(
+          'SELECT id, name, region, api_key FROM agents WHERE id = $1',
+          [qualityAgentId]
+        );
+
+        if (qualityAgentResult.rows.length === 0) {
+          return res.status(404).json({ error: '质检 Agent 不存在' });
+        }
+
+        const qualityAgent = qualityAgentResult.rows[0];
+        const baseUrl = qualityAgent.region === 'SG' 
+          ? 'https://api.gptbots.ai'
+          : 'https://api.gptbots.cn';
+
+        // Format messages for quality agent
+        // Format: user:xxx\nassistant:xxx\n...
+        // Parse message content (can be string or complex object)
+        const extractText = (msg: any): string => {
+          if (typeof msg.content === 'string') {
+            return msg.content;
+          }
+          if (msg.text) {
+            return msg.text;
+          }
+          if (Array.isArray(msg.content)) {
+            // Handle complex content structure
+            const texts: string[] = [];
+            msg.content.forEach((branch: any) => {
+              if (branch.branch_content) {
+                branch.branch_content.forEach((item: any) => {
+                  if (item.type === 'text' && item.text) {
+                    texts.push(item.text);
+                  }
+                });
+              } else if (branch.type === 'text' && branch.text) {
+                texts.push(branch.text);
+              }
+            });
+            return texts.join(' ');
+          }
+          return '';
+        };
+
+        const formattedMessages = messages
+          .map((msg: any) => {
+            const text = extractText(msg);
+            if (!text) return '';
+            
+            if (msg.role === 'user' || msg.role === 'USER') {
+              return `user:${text}`;
+            } else if (msg.role === 'assistant' || msg.role === 'ASSISTANT') {
+              return `assistant:${text}`;
+            }
+            return '';
+          })
+          .filter((msg: string) => msg.length > 0)
+          .join('\n');
+
+        // Create conversation with quality agent
+        const conversationResponse = await fetch(`${baseUrl}/v1/conversation`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${qualityAgent.api_key}`,
+          },
+          body: JSON.stringify({
+            user_id: `quality_check_${Date.now()}`
+          }),
+        });
+
+        if (!conversationResponse.ok) {
+          const errorData = await conversationResponse.json().catch(() => ({}));
+          return res.status(conversationResponse.status).json({
+            error: errorData.message || '创建质检对话失败',
+            code: errorData.code
+          });
+        }
+
+        const conversationData = await conversationResponse.json();
+        const qualityConversationId = conversationData.conversation_id;
+
+        // Send formatted messages to quality agent
+        // Create a prompt for quality checking
+        const prompt = `请作为第三方评估以下对话的完成度，输出 JSON 格式，包含三种状态的置信度（百分比，0-100）：
+
+{
+  "UNRESOLVED": 数值,
+  "PARTIALLY_RESOLVED": 数值,
+  "FULLY_RESOLVED": 数值
+}
+
+对话内容：
+${formattedMessages}
+
+请只输出 JSON，不要其他内容。`;
+
+        const messageResponse = await fetch(`${baseUrl}/v1/message`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${qualityAgent.api_key}`,
+          },
+          body: JSON.stringify({
+            conversation_id: qualityConversationId,
+            inputs: [
+              {
+                type: 'text',
+                text: prompt
+              }
+            ]
+          }),
+        });
+
+        if (!messageResponse.ok) {
+          const errorData = await messageResponse.json().catch(() => ({}));
+          return res.status(messageResponse.status).json({
+            error: errorData.message || '调用质检 Agent 失败',
+            code: errorData.code
+          });
+        }
+
+        const messageData = await messageResponse.json();
+        const qualityResult = messageData.text || messageData.output || '';
+
+        // Parse JSON from quality result
+        let qualityScores: any = {};
+        try {
+          // Try to extract JSON from the response
+          const jsonMatch = qualityResult.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            qualityScores = JSON.parse(jsonMatch[0]);
+          } else {
+            qualityScores = JSON.parse(qualityResult);
+          }
+        } catch (parseError) {
+          console.error('[error] Failed to parse quality result:', qualityResult);
+          return res.status(500).json({
+            error: '解析质检结果失败',
+            rawResult: qualityResult
+          });
+        }
+
+        // Normalize scores (ensure they are percentages 0-100)
+        const normalizedScores: any = {};
+        ['UNRESOLVED', 'PARTIALLY_RESOLVED', 'FULLY_RESOLVED'].forEach(key => {
+          let value = qualityScores[key] || 0;
+          // If value is between 0-1, convert to percentage
+          if (value <= 1) {
+            value = value * 100;
+          }
+          normalizedScores[key] = Math.round(value);
+        });
+
+        return res.json({
+          success: true,
+          scores: normalizedScores,
+          rawResult: qualityResult
+        });
+
+      } else if (action === 'submit') {
+        // Submit quality result to GPTBots API
+        if (!agentId || !answerId || !quality) {
+          return res.status(400).json({ error: '缺少必要参数' });
+        }
+
+        // Get agent info
+        const agentResult = await pool.query(
+          'SELECT id, name, region, api_key FROM agents WHERE id = $1',
+          [agentId]
+        );
+
+        if (agentResult.rows.length === 0) {
+          return res.status(404).json({ error: 'Agent 不存在' });
+        }
+
+        const agent = agentResult.rows[0];
+        const baseUrl = agent.region === 'SG' 
+          ? 'https://api.gptbots.ai'
+          : 'https://api.gptbots.cn';
+
+        // Map quality values
+        const qualityMap: Record<string, string> = {
+          'UNRESOLVED': 'UNRESOLVED',
+          'PARTIALLY_RESOLVED': 'PARTIALLY_RESOLVED',
+          'FULLY_RESOLVED': 'FULLY_RESOLVED',
+          '未解决': 'UNRESOLVED',
+          '部分解决': 'PARTIALLY_RESOLVED',
+          '已解决': 'FULLY_RESOLVED',
+        };
+
+        const mappedQuality = qualityMap[quality] || quality;
+
+        // Call GPTBots quality API
+        const response = await fetch(`${baseUrl}/v1/message/quality`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${agent.api_key}`,
+          },
+          body: JSON.stringify({
+            answer_id: answerId,
+            quality: mappedQuality
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          console.error('[error] GPTBots quality API error:', errorData);
+          return res.status(response.status).json({
+            error: errorData.message || '提交质检结果失败',
+            code: errorData.code
+          });
+        }
+
+        const data = await response.json();
+        return res.json({
+          success: true,
+          affectCount: data.affectCount || 1
+        });
+      }
+
+      return res.status(400).json({ error: '无效的 action 参数' });
+    }
+
+    return res.status(405).json({ error: '方法不允许' });
+  } catch (error: any) {
+    console.error('[error] Quality API error:', error);
+    return res.status(500).json({
+      error: '服务器错误',
+      message: error.message
+    });
+  } finally {
+    // Don't close pool, it's shared
+  }
+}
+

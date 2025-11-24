@@ -113,3 +113,89 @@ export const historyApi = {
   },
 };
 
+// Conversations
+export interface Conversation {
+  conversation_id: string;
+  user_id: string;
+  recent_chat_time: number;
+  subject: string;
+  conversation_type: string;
+  message_count: number;
+  cost_credit: number;
+  bot_id: string;
+}
+
+export interface ConversationListResponse {
+  list: Conversation[];
+  total: number;
+}
+
+export interface Message {
+  message_id: string;
+  role: string;
+  content?: string;
+  text?: string;
+  type?: string;
+  created_at?: number;
+}
+
+export interface MessagesResponse {
+  list: Message[];
+  total: number;
+}
+
+export const conversationsApi = {
+  getList: (params: {
+    agentId: number;
+    page?: number;
+    pageSize?: number;
+    conversationType?: string;
+    userId?: string;
+    startTime?: number;
+    endTime?: number;
+  }) => api.get<ConversationListResponse>('/conversations', { params }).then((res) => res.data),
+  getMessages: (data: {
+    agentId: number;
+    conversationId: string;
+    page?: number;
+    pageSize?: number;
+  }) => api.post<MessagesResponse>('/conversations', data).then((res) => res.data),
+};
+
+// Quality Check
+export interface QualityScores {
+  UNRESOLVED: number;
+  PARTIALLY_RESOLVED: number;
+  FULLY_RESOLVED: number;
+}
+
+export interface QualityCheckResponse {
+  success: boolean;
+  scores: QualityScores;
+  rawResult?: string;
+}
+
+export interface QualitySubmitResponse {
+  success: boolean;
+  affectCount: number;
+}
+
+export const qualityApi = {
+  check: (data: {
+    agentId: number;
+    qualityAgentId: number;
+    messages: Message[];
+  }) => api.post<QualityCheckResponse>('/quality', {
+    action: 'check',
+    ...data
+  }).then((res) => res.data),
+  submit: (data: {
+    agentId: number;
+    answerId: string;
+    quality: 'UNRESOLVED' | 'PARTIALLY_RESOLVED' | 'FULLY_RESOLVED';
+  }) => api.post<QualitySubmitResponse>('/quality', {
+    action: 'submit',
+    ...data
+  }).then((res) => res.data),
+};
+

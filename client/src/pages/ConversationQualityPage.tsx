@@ -1,92 +1,251 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useQuery, useMutation } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ChatBubbleLeftRightIcon,
-  DocumentTextIcon,
-  PaperClipIcon,
   CheckCircleIcon,
   ExclamationCircleIcon,
   XCircleIcon,
   SparklesIcon,
   ArrowPathIcon,
+  EyeIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+  PlayIcon,
+  CheckIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline'
+import { agentsApi, conversationsApi, qualityApi, type Agent, type Conversation, type Message, type QualityScores } from '@/lib/api'
 
-type QualityTag = 'resolved' | 'partially_resolved' | 'unresolved'
+type QualityTag = 'UNRESOLVED' | 'PARTIALLY_RESOLVED' | 'FULLY_RESOLVED'
 
-interface QualityResult {
-  tag: QualityTag
-  confidence: number
-  reasoning?: string
+interface ConversationWithQuality extends Conversation {
+  selected?: boolean
+  qualityScores?: QualityScores
+  messages?: Message[]
+  showDetail?: boolean
+  manualReview?: boolean
 }
 
-const tagConfig: Record<QualityTag, { label: string; color: string; icon: any }> = {
-  resolved: {
+const tagConfig: Record<QualityTag, { label: string; color: string; icon: any; bgColor: string }> = {
+  FULLY_RESOLVED: {
     label: '已解决',
-    color: 'bg-green-100 text-green-800 border-green-300',
+    color: 'text-green-700',
     icon: CheckCircleIcon,
+    bgColor: 'bg-green-100 border-green-300',
   },
-  partially_resolved: {
+  PARTIALLY_RESOLVED: {
     label: '部分解决',
-    color: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+    color: 'text-yellow-700',
     icon: ExclamationCircleIcon,
+    bgColor: 'bg-yellow-100 border-yellow-300',
   },
-  unresolved: {
+  UNRESOLVED: {
     label: '未解决',
-    color: 'bg-red-100 text-red-800 border-red-300',
+    color: 'text-red-700',
     icon: XCircleIcon,
+    bgColor: 'bg-red-100 border-red-300',
   },
 }
 
 export function ConversationQualityPage() {
-  const [conversationText, setConversationText] = useState('')
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [result, setResult] = useState<QualityResult | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null)
+  const [selectedQualityAgentId, setSelectedQualityAgentId] = useState<number | null>(null)
+  const [conversations, setConversations] = useState<ConversationWithQuality[]>([])
+  const [page, setPage] = useState(1)
+  const [expandedConversationId, setExpandedConversationId] = useState<string | null>(null)
+  const [manualReviewConversationId, setManualReviewConversationId] = useState<string | null>(null)
 
-  const handleAnalyze = async () => {
-    if (!conversationText.trim()) {
-      setError('请输入对话内容')
+  // Fetch agents
+  const { data: agents, isLoading: agentsLoading } = useQuery({
+    queryKey: ['agents'],
+    queryFn: () => agentsApi.getAll(),
+  })
+
+  // Fetch conversations
+  const { data: conversationsData, isLoading: conversationsLoading, refetch: refetchConversations } = useQuery({
+    queryKey: ['conversations', selectedAgentId, page],
+    queryFn: () => {
+      if (!selectedAgentId) throw new Error('No agent selected')
+      return conversationsApi.getList({
+        agentId: selectedAgentId,
+        page,
+        pageSize: 20,
+        conversationType: 'ALL',
+      })
+    },
+    enabled: !!selectedAgentId,
+  })
+
+  // Update conversations when data changes
+  useEffect(() => {
+    if (conversationsData?.list) {
+      setConversations(conversationsData.list.map(conv => ({
+        ...conv,
+        selected: false,
+        showDetail: false,
+        manualReview: false,
+      })))
+    }
+  }, [conversationsData])
+
+  // Quality check mutation
+  const qualityCheckMutation = useMutation({
+    mutationFn: async ({ conversationId, messages }: { conversationId: string; messages: Message[] }) => {
+      if (!selectedAgentId || !selectedQualityAgentId) {
+        throw new Error('请选择 Agent 和质检 Agent')
+      }
+      return qualityApi.check({
+        agentId: selectedAgentId,
+        qualityAgentId: selectedQualityAgentId,
+        messages,
+      })
+    },
+  })
+
+  // Quality submit mutation
+  const qualitySubmitMutation = useMutation({
+    mutationFn: async ({ answerId, quality }: { answerId: string; quality: QualityTag }) => {
+      if (!selectedAgentId) {
+        throw new Error('请选择 Agent')
+      }
+      return qualityApi.submit({
+        agentId: selectedAgentId,
+        answerId,
+        quality,
+      })
+    },
+  })
+
+  // Fetch messages for a conversation
+  const fetchMessages = async (conversationId: string) => {
+    if (!selectedAgentId) return
+
+    try {
+      const data = await conversationsApi.getMessages({
+        agentId: selectedAgentId,
+        conversationId,
+        page: 1,
+        pageSize: 100,
+      })
+
+      setConversations(prev => prev.map(conv => 
+        conv.conversation_id === conversationId
+          ? { ...conv, messages: data.list }
+          : conv
+      ))
+    } catch (error) {
+      console.error('Failed to fetch messages:', error)
+    }
+  }
+
+  // Toggle conversation selection
+  const toggleSelection = (conversationId: string) => {
+    setConversations(prev => prev.map(conv =>
+      conv.conversation_id === conversationId
+        ? { ...conv, selected: !conv.selected }
+        : conv
+    ))
+  }
+
+  // Toggle conversation detail
+  const toggleDetail = async (conversationId: string) => {
+    const conversation = conversations.find(c => c.conversation_id === conversationId)
+    
+    if (expandedConversationId === conversationId) {
+      setExpandedConversationId(null)
+    } else {
+      setExpandedConversationId(conversationId)
+      if (!conversation?.messages) {
+        await fetchMessages(conversationId)
+      }
+    }
+  }
+
+  // Run quality check for selected conversations
+  const runQualityCheck = async () => {
+    const selectedConversations = conversations.filter(c => c.selected)
+    
+    if (selectedConversations.length === 0) {
+      alert('请至少选择一个对话')
       return
     }
 
-    setIsAnalyzing(true)
-    setError(null)
-    setResult(null)
-
-    // TODO: 实现实际的 API 调用
-    // 这里先模拟一个分析结果
-    setTimeout(() => {
-      const mockResults: QualityResult[] = [
-        { tag: 'resolved', confidence: 0.92, reasoning: '客户问题已得到完整解答，AI 提供了明确的解决方案，客户表示满意。' },
-        { tag: 'partially_resolved', confidence: 0.68, reasoning: 'AI 提供了部分相关信息，但未能完全解决客户的核心问题，需要进一步跟进。' },
-        { tag: 'unresolved', confidence: 0.85, reasoning: '客户问题未得到有效解决，AI 的回答偏离主题或未能理解客户需求。' },
-      ]
-      const randomResult = mockResults[Math.floor(Math.random() * mockResults.length)]
-      setResult(randomResult)
-      setIsAnalyzing(false)
-    }, 2000)
-  }
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    if (file.type !== 'text/plain' && !file.name.endsWith('.txt')) {
-      setError('请上传 .txt 格式的文件')
+    if (!selectedQualityAgentId) {
+      alert('请选择质检 Agent')
       return
     }
 
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      const content = event.target?.result as string
-      setConversationText(content)
-      setError(null)
+    for (const conv of selectedConversations) {
+      if (!conv.messages || conv.messages.length === 0) {
+        await fetchMessages(conv.conversation_id)
+        // Wait a bit for messages to load
+        await new Promise(resolve => setTimeout(resolve, 500))
+      }
+
+      const updatedConv = conversations.find(c => c.conversation_id === conv.conversation_id)
+      if (updatedConv?.messages) {
+        try {
+          const result = await qualityCheckMutation.mutateAsync({
+            conversationId: conv.conversation_id,
+            messages: updatedConv.messages,
+          })
+
+          setConversations(prev => prev.map(c =>
+            c.conversation_id === conv.conversation_id
+              ? { ...c, qualityScores: result.scores }
+              : c
+          ))
+        } catch (error) {
+          console.error(`Failed to check quality for ${conv.conversation_id}:`, error)
+        }
+      }
     }
-    reader.onerror = () => {
-      setError('文件读取失败')
-    }
-    reader.readAsText(file)
   }
+
+  // Submit quality result
+  const submitQuality = async (conversationId: string, quality: QualityTag) => {
+    const conversation = conversations.find(c => c.conversation_id === conversationId)
+    if (!conversation?.messages) return
+
+    // Find the last assistant message
+    const lastAssistantMessage = [...conversation.messages]
+      .reverse()
+      .find(msg => msg.role === 'assistant' || msg.role === 'ASSISTANT')
+
+    if (!lastAssistantMessage?.message_id) {
+      alert('未找到回复消息 ID')
+      return
+    }
+
+    try {
+      await qualitySubmitMutation.mutateAsync({
+        answerId: lastAssistantMessage.message_id,
+        quality,
+      })
+      
+      setConversations(prev => prev.map(c =>
+        c.conversation_id === conversationId
+          ? { ...c, manualReview: false }
+          : c
+      ))
+      setManualReviewConversationId(null)
+      alert('质检结果已提交')
+    } catch (error: any) {
+      alert(`提交失败: ${error.message || '未知错误'}`)
+    }
+  }
+
+  // Get highest confidence quality tag
+  const getHighestQuality = (scores?: QualityScores): QualityTag | null => {
+    if (!scores) return null
+    
+    const entries = Object.entries(scores) as [QualityTag, number][]
+    const sorted = entries.sort((a, b) => b[1] - a[1])
+    return sorted[0][0]
+  }
+
+  const selectedCount = conversations.filter(c => c.selected).length
 
   return (
     <div className="space-y-6">
@@ -103,241 +262,329 @@ export function ConversationQualityPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Input Section */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="glass-card p-6"
-        >
-          <h2 className="text-xl font-semibold text-text-primary mb-4 flex items-center gap-2">
-            <DocumentTextIcon className="w-6 h-6 text-primary-500" />
-            输入对话内容
-          </h2>
-
-          {/* File Upload */}
-          <div className="mb-4">
-            <label className="block mb-2 text-sm font-medium text-text-secondary">
-              上传对话文件
-            </label>
-            <label className="flex items-center justify-center w-full h-32 border-2 border-dashed border-primary-300 rounded-lg cursor-pointer hover:border-primary-400 transition-colors">
-              <div className="flex flex-col items-center gap-2">
-                <PaperClipIcon className="w-8 h-8 text-primary-400" />
-                <span className="text-sm text-text-secondary">
-                  点击上传或拖拽文件到此处
-                </span>
-                <span className="text-xs text-text-tertiary">支持 .txt 格式</span>
-              </div>
-              <input
-                type="file"
-                className="hidden"
-                accept=".txt,text/plain"
-                onChange={handleFileUpload}
-              />
-            </label>
+      {/* Agent Selection */}
+      <div className="glass-card p-6">
+        <h2 className="text-xl font-semibold text-text-primary mb-4">选择 Agent</h2>
+        {agentsLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <ArrowPathIcon className="w-6 h-6 animate-spin text-primary-500" />
           </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-2">
+                被质检的 Agent
+              </label>
+              <select
+                value={selectedAgentId || ''}
+                onChange={(e) => {
+                  setSelectedAgentId(e.target.value ? parseInt(e.target.value) : null)
+                  setPage(1)
+                  setConversations([])
+                }}
+                className="w-full px-4 py-2 border border-primary-200 rounded-lg focus:ring-2 focus:ring-primary-400 focus:border-transparent bg-white"
+              >
+                <option value="">请选择 Agent</option>
+                {agents?.map(agent => (
+                  <option key={agent.id} value={agent.id}>
+                    {agent.name} ({agent.region})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-2">
+                质检 Agent（用于分析对话质量）
+              </label>
+              <select
+                value={selectedQualityAgentId || ''}
+                onChange={(e) => setSelectedQualityAgentId(e.target.value ? parseInt(e.target.value) : null)}
+                className="w-full px-4 py-2 border border-primary-200 rounded-lg focus:ring-2 focus:ring-primary-400 focus:border-transparent bg-white"
+              >
+                <option value="">请选择质检 Agent</option>
+                {agents?.map(agent => (
+                  <option key={agent.id} value={agent.id}>
+                    {agent.name} ({agent.region})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+      </div>
 
-          {/* Text Input */}
-          <div className="mb-4">
-            <label className="block mb-2 text-sm font-medium text-text-secondary">
-              或直接输入对话内容
-            </label>
-            <textarea
-              value={conversationText}
-              onChange={(e) => {
-                setConversationText(e.target.value)
-                setError(null)
-              }}
-              placeholder="请输入完整的对话内容，包括客户和 AI 的所有消息..."
-              className="w-full h-64 px-4 py-3 border border-primary-200 rounded-lg focus:ring-2 focus:ring-primary-400 focus:border-transparent resize-none bg-white text-text-primary placeholder-text-tertiary"
-            />
-            <div className="mt-2 text-xs text-text-tertiary text-right">
-              {conversationText.length} 字符
+      {/* Conversations List */}
+      {selectedAgentId && (
+        <div className="glass-card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-text-primary">会话列表</h2>
+            <div className="flex items-center gap-4">
+              {selectedCount > 0 && (
+                <span className="text-sm text-text-secondary">
+                  已选择 {selectedCount} 个会话
+                </span>
+              )}
+              {selectedCount > 0 && selectedQualityAgentId && (
+                <button
+                  onClick={runQualityCheck}
+                  disabled={qualityCheckMutation.isPending}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                >
+                  {qualityCheckMutation.isPending ? (
+                    <>
+                      <ArrowPathIcon className="w-5 h-5 animate-spin" />
+                      质检中...
+                    </>
+                  ) : (
+                    <>
+                      <PlayIcon className="w-5 h-5" />
+                      运行质检
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
 
-          {/* Error Message */}
-          <AnimatePresence>
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm"
-              >
-                {error}
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {conversationsLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <ArrowPathIcon className="w-8 h-8 animate-spin text-primary-500" />
+            </div>
+          ) : conversations.length === 0 ? (
+            <div className="text-center py-12 text-text-tertiary">
+              暂无会话记录
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {conversations.map((conversation) => {
+                const highestQuality = getHighestQuality(conversation.qualityScores)
+                const isExpanded = expandedConversationId === conversation.conversation_id
+                const isManualReview = manualReviewConversationId === conversation.conversation_id
 
-          {/* Analyze Button */}
-          <button
-            onClick={handleAnalyze}
-            disabled={isAnalyzing || !conversationText.trim()}
-            className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-primary-500 text-white rounded-lg font-medium hover:bg-primary-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors shadow-md hover:shadow-lg"
-          >
-            {isAnalyzing ? (
-              <>
-                <ArrowPathIcon className="w-5 h-5 animate-spin" />
-                分析中...
-              </>
-            ) : (
-              <>
-                <SparklesIcon className="w-5 h-5" />
-                开始分析
-              </>
-            )}
-          </button>
-        </motion.div>
+                return (
+                  <motion.div
+                    key={conversation.conversation_id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="border border-primary-200 rounded-lg p-4 hover:shadow-md transition-shadow bg-white"
+                  >
+                    <div className="flex items-start gap-4">
+                      {/* Checkbox */}
+                      <input
+                        type="checkbox"
+                        checked={conversation.selected || false}
+                        onChange={() => toggleSelection(conversation.conversation_id)}
+                        className="mt-1 w-5 h-5 text-primary-500 rounded focus:ring-primary-400"
+                      />
 
-        {/* Result Section */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="glass-card p-6"
-        >
-          <h2 className="text-xl font-semibold text-text-primary mb-4 flex items-center gap-2">
-            <SparklesIcon className="w-6 h-6 text-primary-500" />
-            分析结果
-          </h2>
+                      {/* Content */}
+                      <div className="flex-1">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <h3 className="font-semibold text-text-primary">
+                              {conversation.subject || '无主题'}
+                            </h3>
+                            <div className="mt-1 flex flex-wrap items-center gap-4 text-sm text-text-secondary">
+                              <span>用户: {conversation.user_id}</span>
+                              <span>消息数: {conversation.message_count}</span>
+                              <span>
+                                时间: {new Date(conversation.recent_chat_time).toLocaleString('zh-CN')}
+                              </span>
+                            </div>
+                          </div>
 
-          <AnimatePresence mode="wait">
-            {!result && !isAnalyzing && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="flex flex-col items-center justify-center h-64 text-text-tertiary"
-              >
-                <ChatBubbleLeftRightIcon className="w-16 h-16 mb-4 opacity-50" />
-                <p>输入对话内容后，点击"开始分析"查看结果</p>
-              </motion.div>
-            )}
+                          {/* Quality Result */}
+                          {conversation.qualityScores && highestQuality && (
+                            <div className="flex items-center gap-3">
+                              <div className="flex gap-2">
+                                {Object.entries(conversation.qualityScores).map(([key, value]) => {
+                                  const tag = key as QualityTag
+                                  const config = tagConfig[tag]
+                                  const IconComponent = config.icon
+                                  return (
+                                    <div
+                                      key={key}
+                                      className={`flex items-center gap-1 px-2 py-1 rounded border ${config.bgColor} ${config.color}`}
+                                    >
+                                      <IconComponent className="w-4 h-4" />
+                                      <span className="text-xs font-medium">{config.label}</span>
+                                      <span className="text-xs">{value}%</span>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                              <button
+                                onClick={() => {
+                                  const quality = highestQuality
+                                  submitQuality(conversation.conversation_id, quality)
+                                }}
+                                disabled={qualitySubmitMutation.isPending}
+                                className={`flex items-center gap-1 px-3 py-1 rounded-lg border ${tagConfig[highestQuality].bgColor} ${tagConfig[highestQuality].color} hover:opacity-80 transition-opacity`}
+                              >
+                                <CheckIcon className="w-4 h-4" />
+                                <span className="text-sm font-medium">应用 {tagConfig[highestQuality].label}</span>
+                              </button>
+                            </div>
+                          )}
 
-            {isAnalyzing && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="flex flex-col items-center justify-center h-64"
-              >
-                <ArrowPathIcon className="w-12 h-12 text-primary-500 animate-spin mb-4" />
-                <p className="text-text-secondary">AI 正在分析对话内容...</p>
-              </motion.div>
-            )}
+                          {/* Actions */}
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => {
+                                setManualReviewConversationId(
+                                  isManualReview ? null : conversation.conversation_id
+                                )
+                              }}
+                              className="px-3 py-1 text-sm text-primary-600 hover:bg-primary-50 rounded transition-colors"
+                            >
+                              人工审核
+                            </button>
+                            <button
+                              onClick={() => toggleDetail(conversation.conversation_id)}
+                              className="p-2 text-text-secondary hover:text-primary-600 hover:bg-primary-50 rounded transition-colors"
+                            >
+                              {isExpanded ? (
+                                <ChevronUpIcon className="w-5 h-5" />
+                              ) : (
+                                <ChevronDownIcon className="w-5 h-5" />
+                              )}
+                            </button>
+                          </div>
+                        </div>
 
-            {result && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="space-y-4"
-              >
-                {/* Tag Badge */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-medium text-text-secondary">完成度标签：</span>
-                    <div
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg border ${tagConfig[result.tag].color}`}
-                    >
-                      {(() => {
-                        const IconComponent = tagConfig[result.tag].icon
-                        return <IconComponent className="w-5 h-5" />
-                      })()}
-                      <span className="font-semibold">{tagConfig[result.tag].label}</span>
+                        {/* Manual Review Bubble */}
+                        <AnimatePresence>
+                          {isManualReview && (
+                            <motion.div
+                              initial={{ opacity: 0, scale: 0.9, y: -10 }}
+                              animate={{ opacity: 1, scale: 1, y: 0 }}
+                              exit={{ opacity: 0, scale: 0.9, y: -10 }}
+                              className="mt-3 p-3 bg-primary-50 rounded-lg border border-primary-200"
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium text-text-primary">选择质检结果：</span>
+                                {Object.entries(tagConfig).map(([key, config]) => {
+                                  const tag = key as QualityTag
+                                  const IconComponent = config.icon
+                                  return (
+                                    <button
+                                      key={key}
+                                      onClick={() => submitQuality(conversation.conversation_id, tag)}
+                                      className={`flex items-center gap-1 px-3 py-1 rounded border ${config.bgColor} ${config.color} hover:opacity-80 transition-opacity`}
+                                    >
+                                      <IconComponent className="w-4 h-4" />
+                                      <span className="text-sm">{config.label}</span>
+                                    </button>
+                                  )
+                                })}
+                                <button
+                                  onClick={() => setManualReviewConversationId(null)}
+                                  className="ml-auto p-1 text-text-secondary hover:text-text-primary"
+                                >
+                                  <XMarkIcon className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+
+                        {/* Conversation Detail */}
+                        <AnimatePresence>
+                          {isExpanded && conversation.messages && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              className="mt-4 pt-4 border-t border-primary-200"
+                            >
+                              <div className="space-y-3 max-h-96 overflow-y-auto">
+                                {conversation.messages.map((msg, idx) => {
+                                  const isUser = msg.role === 'user' || msg.role === 'USER'
+                                  const content = msg.content || msg.text || ''
+                                  return (
+                                    <div
+                                      key={msg.message_id || idx}
+                                      className={`p-3 rounded-lg ${
+                                        isUser
+                                          ? 'bg-blue-50 border border-blue-200'
+                                          : 'bg-gray-50 border border-gray-200'
+                                      }`}
+                                    >
+                                      <div className="flex items-start gap-2">
+                                        <span className={`text-xs font-medium ${
+                                          isUser ? 'text-blue-600' : 'text-gray-600'
+                                        }`}>
+                                          {isUser ? '用户' : 'AI'}
+                                        </span>
+                                        <span className="text-xs text-text-tertiary">
+                                          {msg.created_at ? new Date(msg.created_at).toLocaleString('zh-CN') : ''}
+                                        </span>
+                                      </div>
+                                      <p className="mt-1 text-sm text-text-primary whitespace-pre-wrap">
+                                        {content}
+                                      </p>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
                     </div>
-                  </div>
-                </div>
+                  </motion.div>
+                )
+              })}
+            </div>
+          )}
 
-                {/* Confidence Score */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-text-secondary">置信度：</span>
-                    <span className="text-lg font-bold text-primary-600">
-                      {(result.confidence * 100).toFixed(1)}%
-                    </span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-3">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${result.confidence * 100}%` }}
-                      transition={{ duration: 0.5, ease: 'easeOut' }}
-                      className={`h-3 rounded-full ${
-                        result.confidence >= 0.8
-                          ? 'bg-green-500'
-                          : result.confidence >= 0.6
-                          ? 'bg-yellow-500'
-                          : 'bg-red-500'
-                      }`}
-                    />
-                  </div>
-                </div>
-
-                {/* Reasoning */}
-                {result.reasoning && (
-                  <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                    <h3 className="text-sm font-semibold text-text-primary mb-2">分析理由：</h3>
-                    <p className="text-sm text-text-secondary leading-relaxed">
-                      {result.reasoning}
-                    </p>
-                  </div>
-                )}
-
-                {/* Action Buttons */}
-                <div className="flex gap-3 mt-6">
-                  <button
-                    onClick={() => {
-                      setConversationText('')
-                      setResult(null)
-                      setError(null)
-                    }}
-                    className="flex-1 px-4 py-2 border border-primary-300 text-primary-600 rounded-lg hover:bg-primary-50 transition-colors"
-                  >
-                    清空内容
-                  </button>
-                  <button
-                    onClick={handleAnalyze}
-                    className="flex-1 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors"
-                  >
-                    重新分析
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.div>
-      </div>
+          {/* Pagination */}
+          {conversationsData && conversationsData.total > 0 && (
+            <div className="mt-6 flex items-center justify-between">
+              <div className="text-sm text-text-secondary">
+                共 {conversationsData.total} 条记录
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="px-4 py-2 border border-primary-200 rounded-lg hover:bg-primary-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  上一页
+                </button>
+                <span className="px-4 py-2 text-sm text-text-secondary">
+                  第 {page} 页
+                </span>
+                <button
+                  onClick={() => setPage(p => p + 1)}
+                  disabled={conversationsData.list.length < 20}
+                  className="px-4 py-2 border border-primary-200 rounded-lg hover:bg-primary-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  下一页
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Info Section */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.2 }}
-        className="glass-card p-6"
-      >
-        <h3 className="text-lg font-semibold text-text-primary mb-3">功能说明</h3>
-        <ul className="space-y-2 text-sm text-text-secondary">
-          <li className="flex items-start gap-2">
-            <span className="text-primary-500 mt-1">•</span>
-            <span>
-              <strong>已解决：</strong>客户问题已得到完整解答，AI 提供了明确的解决方案，客户表示满意。
-            </span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="text-primary-500 mt-1">•</span>
-            <span>
-              <strong>部分解决：</strong>AI 提供了部分相关信息，但未能完全解决客户的核心问题，需要进一步跟进。
-            </span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="text-primary-500 mt-1">•</span>
-            <span>
-              <strong>未解决：</strong>客户问题未得到有效解决，AI 的回答偏离主题或未能理解客户需求。
-            </span>
-          </li>
-        </ul>
-      </motion.div>
+      {!selectedAgentId && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="glass-card p-6"
+        >
+          <h3 className="text-lg font-semibold text-text-primary mb-3">使用说明</h3>
+          <ol className="space-y-2 text-sm text-text-secondary list-decimal list-inside">
+            <li>在 Agents 页面创建 Agent</li>
+            <li>选择被质检的 Agent 和用于质检的 Agent</li>
+            <li>勾选需要质检的对话</li>
+            <li>点击"运行质检"按钮进行批量质检</li>
+            <li>查看质检结果，点击"应用"按钮提交结果，或点击"人工审核"手动选择</li>
+          </ol>
+        </motion.div>
+      )}
     </div>
   )
 }
-
