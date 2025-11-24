@@ -51,17 +51,30 @@ async function callQualityAgent(
     });
 
     if (!conversationResponse.ok) {
-      const errorData = await conversationResponse.json().catch(() => ({}));
+      const errorText = await conversationResponse.text().catch(() => '');
+      let errorData: any = {};
+      try {
+        errorData = JSON.parse(errorText);
+      } catch (e) {
+        console.error('Failed to parse error response:', errorText);
+      }
+      console.error('Failed to create conversation:', {
+        status: conversationResponse.status,
+        statusText: conversationResponse.statusText,
+        error: errorData,
+      });
       return {
         success: false,
-        error: errorData.message || `创建对话失败 (${conversationResponse.status})`,
+        error: errorData.message || errorData.error || `创建对话失败 (${conversationResponse.status})`,
       };
     }
 
     const conversationData = await conversationResponse.json();
+    console.log('Conversation created:', { conversationId: conversationData.conversation_id });
     const conversationId = conversationData.conversation_id;
 
     if (!conversationId) {
+      console.error('No conversation_id in response:', conversationData);
       return {
         success: false,
         error: '未获取到conversation_id',
@@ -89,25 +102,69 @@ async function callQualityAgent(
     });
 
     if (!messageResponse.ok) {
-      const errorData = await messageResponse.json().catch(() => ({}));
+      const errorText = await messageResponse.text().catch(() => '');
+      let errorData: any = {};
+      try {
+        errorData = JSON.parse(errorText);
+      } catch (e) {
+        console.error('Failed to parse error response:', errorText);
+      }
+      console.error('Failed to send message:', {
+        status: messageResponse.status,
+        statusText: messageResponse.statusText,
+        error: errorData,
+      });
       return {
         success: false,
-        error: errorData.message || `API调用失败 (${messageResponse.status})`,
+        error: errorData.message || errorData.error || `API调用失败 (${messageResponse.status})`,
       };
     }
 
     const messageData = await messageResponse.json();
+    console.log('Message response received:', { 
+      hasOutput: !!messageData.output,
+      outputLength: messageData.output?.length || 0,
+    });
 
-    // Extract response text
+    // Extract response text - try multiple possible response formats
     let responseText = '';
+    
+    // Format 1: messageData.output array
     if (messageData.output && Array.isArray(messageData.output) && messageData.output.length > 0) {
       const firstOutput = messageData.output[0];
-      if (firstOutput.content && firstOutput.content.text) {
-        responseText = firstOutput.content.text;
+      if (firstOutput.content) {
+        if (typeof firstOutput.content === 'string') {
+          responseText = firstOutput.content;
+        } else if (firstOutput.content.text) {
+          responseText = firstOutput.content.text;
+        } else if (Array.isArray(firstOutput.content)) {
+          // Handle array of content items
+          const textParts = firstOutput.content
+            .filter((item: any) => item.type === 'text' && item.text)
+            .map((item: any) => item.text);
+          responseText = textParts.join('\n');
+        }
+      }
+    }
+    
+    // Format 2: messageData.text (direct text field)
+    if (!responseText && messageData.text) {
+      responseText = messageData.text;
+    }
+    
+    // Format 3: messageData.content (direct content field)
+    if (!responseText && messageData.content) {
+      if (typeof messageData.content === 'string') {
+        responseText = messageData.content;
+      } else if (messageData.content.text) {
+        responseText = messageData.content.text;
       }
     }
 
+    console.log('Extracted response text length:', responseText.length);
+    
     if (!responseText) {
+      console.error('No response text found in message data:', JSON.stringify(messageData, null, 2));
       return {
         success: false,
         error: '质检 Agent 返回了空响应',
@@ -151,6 +208,7 @@ async function callQualityAgent(
 
   } catch (error: any) {
     console.error('Quality check error:', error);
+    console.error('Error stack:', error.stack);
     return {
       success: false,
       error: error.message || '质检检查失败',
@@ -207,33 +265,56 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const { action, agentId, qualityAgentId, messages, answerId, quality } = req.body;
+    
+    console.log('Quality API request:', {
+      action,
+      agentId,
+      qualityAgentId,
+      messagesCount: messages?.length || 0,
+      answerId,
+      quality,
+    });
 
     if (action === 'check') {
       // Quality check
       if (!agentId || !qualityAgentId || !messages || !Array.isArray(messages)) {
+        console.error('Missing required parameters:', { agentId, qualityAgentId, hasMessages: !!messages, isArray: Array.isArray(messages) });
         return res.status(400).json({ error: '缺少必要参数' });
       }
 
       // Get quality agent info
+      console.log('Fetching quality agent:', qualityAgentId);
       const qualityAgentResult = await pool.query(
         'SELECT id, name, region, api_key FROM agents WHERE id = $1',
         [qualityAgentId]
       );
 
       if (qualityAgentResult.rows.length === 0) {
+        console.error('Quality agent not found:', qualityAgentId);
         return res.status(404).json({ error: '质检 Agent 不存在' });
       }
 
       const qualityAgent = qualityAgentResult.rows[0];
+      console.log('Quality agent found:', { id: qualityAgent.id, name: qualityAgent.name, region: qualityAgent.region });
 
       // Call quality agent
+      console.log('Calling quality agent with', messages.length, 'messages');
       const result = await callQualityAgent(
         qualityAgent.api_key,
         qualityAgent.region,
         messages
       );
 
+      console.log('Quality agent result:', {
+        success: result.success,
+        hasScores: !!result.scores,
+        hasReason: !!result.reason,
+        hasUserIntention: !!result.userIntention,
+        error: result.error,
+      });
+
       if (!result.success) {
+        console.error('Quality check failed:', result.error);
         return res.status(500).json({
           success: false,
           error: result.error || '质检检查失败',
@@ -292,9 +373,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   } catch (error: any) {
     console.error('Quality API error:', error);
+    console.error('Error stack:', error.stack);
+    console.error('Request body:', JSON.stringify(req.body, null, 2));
     return res.status(500).json({
       success: false,
       error: error.message || '服务器错误',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
     });
   }
 }
