@@ -353,6 +353,17 @@ export function ConversationQualityPage() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold text-text-primary">会话列表</h2>
             <div className="flex items-center gap-4">
+              {conversations.length > 0 && (
+                <button
+                  onClick={() => {
+                    const allSelected = conversations.every(c => c.selected)
+                    setConversations(prev => prev.map(c => ({ ...c, selected: !allSelected })))
+                  }}
+                  className="px-3 py-1 text-sm text-primary-600 hover:bg-primary-50 rounded transition-colors border border-primary-200"
+                >
+                  {conversations.every(c => c.selected) ? '取消全选' : '全选当前页'}
+                </button>
+              )}
               {selectedCount > 0 && (
                 <span className="text-sm text-text-secondary">
                   已选择 {selectedCount} 个会话
