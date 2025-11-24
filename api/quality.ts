@@ -19,19 +19,35 @@ async function callQualityAgent(
       : 'https://api.gptbots.cn';
 
     // Format messages as user:xxx\nassistant:xxx
+    console.log('Raw messages received:', JSON.stringify(messages, null, 2));
+    
     const formattedMessages = messages
       .filter(msg => {
         const role = msg.role?.toUpperCase();
-        return role === 'USER' || role === 'ASSISTANT';
+        const isValid = role === 'USER' || role === 'ASSISTANT';
+        if (!isValid) {
+          console.log('Filtered out message with role:', role);
+        }
+        return isValid;
       })
       .map(msg => {
         const role = msg.role?.toUpperCase();
         const content = msg.content || msg.text || '';
-        return `${role === 'USER' ? 'user' : 'assistant'}:${content}`;
+        const formatted = `${role === 'USER' ? 'user' : 'assistant'}:${content}`;
+        console.log('Formatted message:', formatted.substring(0, 100) + (formatted.length > 100 ? '...' : ''));
+        return formatted;
       })
       .join('\n');
 
-    if (!formattedMessages) {
+    console.log('Final formatted messages (first 500 chars):', formattedMessages.substring(0, 500));
+    console.log('Total formatted messages length:', formattedMessages.length);
+    console.log('Number of messages formatted:', messages.filter(msg => {
+      const role = msg.role?.toUpperCase();
+      return role === 'USER' || role === 'ASSISTANT';
+    }).length);
+
+    if (!formattedMessages || formattedMessages.trim().length === 0) {
+      console.error('No valid formatted messages found');
       return {
         success: false,
         error: '没有有效的消息内容',
@@ -82,23 +98,32 @@ async function callQualityAgent(
     }
 
     // Send message to quality agent
+    const requestBody = {
+      conversation_id: conversationId,
+      response_mode: 'blocking',
+      messages: [{
+        role: 'user',
+        content: [{
+          type: 'text',
+          text: formattedMessages
+        }]
+      }]
+    };
+    
+    console.log('Sending formatted messages to quality agent:', {
+      conversationId,
+      formattedMessagesLength: formattedMessages.length,
+      formattedMessagesPreview: formattedMessages.substring(0, 200) + (formattedMessages.length > 200 ? '...' : ''),
+      requestBodyPreview: JSON.stringify(requestBody).substring(0, 500),
+    });
+    
     const messageResponse = await fetch(`${baseUrl}/v1/conversation/message`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${qualityAgentApiKey}`,
       },
-      body: JSON.stringify({
-        conversation_id: conversationId,
-        response_mode: 'blocking',
-        messages: [{
-          role: 'user',
-          content: [{
-            type: 'text',
-            text: formattedMessages
-          }]
-        }]
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!messageResponse.ok) {
