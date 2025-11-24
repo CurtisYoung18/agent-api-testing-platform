@@ -21,10 +21,13 @@ type QualityTag = 'UNRESOLVED' | 'PARTIALLY_RESOLVED' | 'FULLY_RESOLVED'
 interface ConversationWithQuality extends Conversation {
   selected?: boolean
   qualityScores?: QualityScores
+  qualityReason?: string // AI判断原因
+  userIntention?: string // 用户意图
   messages?: Message[]
   showDetail?: boolean
   manualReview?: boolean
   appliedQuality?: QualityTag // Applied quality tag
+  showReason?: boolean // 是否显示原因
 }
 
 const tagConfig: Record<QualityTag, { label: string; color: string; icon: any; bgColor: string }> = {
@@ -211,7 +214,12 @@ export function ConversationQualityPage() {
 
           setConversations(prev => prev.map(c =>
             c.conversation_id === conv.conversation_id
-              ? { ...c, qualityScores: result.scores }
+              ? { 
+                  ...c, 
+                  qualityScores: result.scores,
+                  qualityReason: result.reason,
+                  userIntention: result.userIntention
+                }
               : c
           ))
         } catch (error) {
@@ -435,6 +443,14 @@ export function ConversationQualityPage() {
                                 时间: {new Date(conversation.recent_chat_time).toLocaleString('zh-CN')}
                               </span>
                             </div>
+                            
+                            {/* User Intention */}
+                            {conversation.userIntention && (
+                              <div className="mt-2 text-sm">
+                                <span className="text-text-secondary font-medium">用户意图：</span>
+                                <span className="text-text-primary">{conversation.userIntention}</span>
+                              </div>
+                            )}
                           </div>
 
                           {/* Applied Quality Tag */}
@@ -458,35 +474,77 @@ export function ConversationQualityPage() {
 
                           {/* AI Quality Scores (only show if not applied yet) */}
                           {!conversation.appliedQuality && conversation.qualityScores && highestQuality && (
-                            <div className="flex items-center gap-3">
-                              <div className="flex gap-2">
-                                {Object.entries(conversation.qualityScores).map(([key, value]) => {
-                                  const tag = key as QualityTag
-                                  const config = tagConfig[tag]
-                                  const IconComponent = config.icon
-                                  return (
-                                    <div
-                                      key={key}
-                                      className={`flex items-center gap-1 px-2 py-1 rounded border ${config.bgColor} ${config.color}`}
-                                    >
-                                      <IconComponent className="w-4 h-4" />
-                                      <span className="text-xs font-medium">{config.label}</span>
-                                      <span className="text-xs">{value}%</span>
-                                    </div>
-                                  )
-                                })}
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-3">
+                                <div className="flex gap-2">
+                                  {Object.entries(conversation.qualityScores).map(([key, value]) => {
+                                    const tag = key as QualityTag
+                                    const config = tagConfig[tag]
+                                    const IconComponent = config.icon
+                                    return (
+                                      <div
+                                        key={key}
+                                        className={`flex items-center gap-1 px-2 py-1 rounded border ${config.bgColor} ${config.color}`}
+                                      >
+                                        <IconComponent className="w-4 h-4" />
+                                        <span className="text-xs font-medium">{config.label}</span>
+                                        <span className="text-xs">{value}%</span>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    const quality = highestQuality
+                                    submitQuality(conversation.conversation_id, quality)
+                                  }}
+                                  disabled={qualitySubmitMutation.isPending}
+                                  className={`flex items-center gap-1 px-3 py-1 rounded-lg border ${tagConfig[highestQuality].bgColor} ${tagConfig[highestQuality].color} hover:opacity-80 transition-opacity`}
+                                >
+                                  <CheckIcon className="w-4 h-4" />
+                                  <span className="text-sm font-medium">应用 {tagConfig[highestQuality].label}</span>
+                                </button>
                               </div>
-                              <button
-                                onClick={() => {
-                                  const quality = highestQuality
-                                  submitQuality(conversation.conversation_id, quality)
-                                }}
-                                disabled={qualitySubmitMutation.isPending}
-                                className={`flex items-center gap-1 px-3 py-1 rounded-lg border ${tagConfig[highestQuality].bgColor} ${tagConfig[highestQuality].color} hover:opacity-80 transition-opacity`}
-                              >
-                                <CheckIcon className="w-4 h-4" />
-                                <span className="text-sm font-medium">应用 {tagConfig[highestQuality].label}</span>
-                              </button>
+                              
+                              {/* Reason Display */}
+                              {conversation.qualityReason && (
+                                <div className="mt-2">
+                                  <button
+                                    onClick={() => {
+                                      setConversations(prev => prev.map(c =>
+                                        c.conversation_id === conversation.conversation_id
+                                          ? { ...c, showReason: !c.showReason }
+                                          : c
+                                      ))
+                                    }}
+                                    className="text-sm text-primary-600 hover:text-primary-700 flex items-center gap-1"
+                                  >
+                                    {conversation.showReason ? (
+                                      <>
+                                        <ChevronUpIcon className="w-4 h-4" />
+                                        隐藏判断原因
+                                      </>
+                                    ) : (
+                                      <>
+                                        <ChevronDownIcon className="w-4 h-4" />
+                                        查看判断原因
+                                      </>
+                                    )}
+                                  </button>
+                                  <AnimatePresence>
+                                    {conversation.showReason && (
+                                      <motion.div
+                                        initial={{ opacity: 0, height: 0 }}
+                                        animate={{ opacity: 1, height: 'auto' }}
+                                        exit={{ opacity: 0, height: 0 }}
+                                        className="mt-2 p-3 bg-gray-50 rounded-lg border border-gray-200 text-sm text-text-secondary"
+                                      >
+                                        {conversation.qualityReason}
+                                      </motion.div>
+                                    )}
+                                  </AnimatePresence>
+                                </div>
+                              )}
                             </div>
                           )}
 

@@ -173,6 +173,8 @@ export interface QualityScores {
 export interface QualityCheckResponse {
   success: boolean;
   scores: QualityScores;
+  reason?: string;
+  userIntention?: string;
   rawResult?: string;
 }
 

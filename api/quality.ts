@@ -107,13 +107,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         // Send formatted messages to quality agent
         // Create a prompt for quality checking
-        const prompt = `请作为第三方评估以下对话的完成度，输出 JSON 格式，包含三种状态的置信度（百分比，0-100）：
+        const prompt = `请作为第三方评估以下对话的完成度。注意：如果对话最后转接到人工客服，需要重点关注AI解决了哪些需求，以体现Agent的有用之处。如果未转接人工，则更偏向于完全解决。
+
+输出 JSON 格式，包含以下字段：
 
 {
   "UNRESOLVED": 数值,
   "PARTIALLY_RESOLVED": 数值,
-  "FULLY_RESOLVED": 数值
+  "FULLY_RESOLVED": 数值,
+  "reason": "判断原因的详细说明",
+  "user_intention": "用户在这轮对话中想要处理的事情"
 }
+
+字段说明：
+- UNRESOLVED, PARTIALLY_RESOLVED, FULLY_RESOLVED: 三种状态的置信度（百分比，0-100）
+- reason: 为什么给出置信度最高的那个tag的判断原因，需要详细说明
+- user_intention: 用户在这轮对话中的核心意图和想要解决的问题
 
 对话内容：
 ${formattedMessages}
@@ -212,9 +221,15 @@ ${formattedMessages}
           normalizedScores[key] = Math.round(value);
         });
 
+        // Extract reason and user_intention
+        const reason = qualityScores.reason || qualityScores.reasoning || '';
+        const userIntention = qualityScores.user_intention || qualityScores.userIntention || '';
+
         return res.json({
           success: true,
           scores: normalizedScores,
+          reason: reason,
+          userIntention: userIntention,
           rawResult: qualityResult
         });
 
