@@ -6,16 +6,14 @@ import {
   CheckCircleIcon,
   ExclamationCircleIcon,
   XCircleIcon,
-  SparklesIcon,
   ArrowPathIcon,
-  EyeIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   PlayIcon,
   CheckIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline'
-import { agentsApi, conversationsApi, qualityApi, type Agent, type Conversation, type Message, type QualityScores } from '@/lib/api'
+import { agentsApi, conversationsApi, qualityApi, type Conversation, type Message, type QualityScores } from '@/lib/api'
 
 type QualityTag = 'UNRESOLVED' | 'PARTIALLY_RESOLVED' | 'FULLY_RESOLVED'
 
@@ -63,7 +61,7 @@ export function ConversationQualityPage() {
   })
 
   // Fetch conversations
-  const { data: conversationsData, isLoading: conversationsLoading, refetch: refetchConversations } = useQuery({
+  const { data: conversationsData, isLoading: conversationsLoading } = useQuery({
     queryKey: ['conversations', selectedAgentId, page],
     queryFn: () => {
       if (!selectedAgentId) throw new Error('No agent selected')
@@ -91,7 +89,7 @@ export function ConversationQualityPage() {
 
   // Quality check mutation
   const qualityCheckMutation = useMutation({
-    mutationFn: async ({ conversationId, messages }: { conversationId: string; messages: Message[] }) => {
+    mutationFn: async ({ messages }: { messages: Message[] }) => {
       if (!selectedAgentId || !selectedQualityAgentId) {
         throw new Error('请选择 Agent 和质检 Agent')
       }
@@ -187,7 +185,6 @@ export function ConversationQualityPage() {
       if (updatedConv?.messages) {
         try {
           const result = await qualityCheckMutation.mutateAsync({
-            conversationId: conv.conversation_id,
             messages: updatedConv.messages,
           })
 
