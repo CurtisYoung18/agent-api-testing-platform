@@ -122,8 +122,8 @@ export function ConversationQualityPage() {
   })
 
   // Fetch messages for a conversation
-  const fetchMessages = async (conversationId: string): Promise<Message[] | null> => {
-    if (!selectedAgentId) return null
+  const fetchMessages = async (conversationId: string): Promise<Message[] | undefined> => {
+    if (!selectedAgentId) return undefined
 
     try {
       const data = await conversationsApi.getMessages({
@@ -160,7 +160,7 @@ export function ConversationQualityPage() {
       return sortedMessages
     } catch (error) {
       console.error('Failed to fetch messages:', error)
-      return null
+      return undefined
     }
   }
 
@@ -471,6 +471,31 @@ export function ConversationQualityPage() {
                               </div>
                             </div>
 
+                            {/* Actions */}
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => {
+                                  setManualReviewConversationId(
+                                    isManualReview ? null : conversation.conversation_id
+                                  )
+                                }}
+                                className="px-3 py-1 text-sm text-primary-600 hover:bg-primary-50 rounded transition-colors"
+                              >
+                                人工审核
+                              </button>
+                              <button
+                                onClick={() => toggleDetail(conversation.conversation_id)}
+                                className="p-2 text-text-secondary hover:text-primary-600 hover:bg-primary-50 rounded transition-colors"
+                              >
+                                {isExpanded ? (
+                                  <ChevronUpIcon className="w-5 h-5" />
+                                ) : (
+                                  <ChevronDownIcon className="w-5 h-5" />
+                                )}
+                              </button>
+                            </div>
+                          </div>
+
                           {/* User Intention */}
                           {conversation.userIntention && (
                             <div className="space-y-2">
@@ -582,112 +607,86 @@ export function ConversationQualityPage() {
                           )}
                         </div>
                       </div>
+                    </div>
 
-                          {/* Actions */}
+                    {/* Manual Review Bubble */}
+                    <AnimatePresence>
+                      {isManualReview && (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.9, y: -10 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.9, y: -10 }}
+                          className="mt-3 p-3 bg-primary-50 rounded-lg border border-primary-200"
+                        >
                           <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-text-primary">选择质检结果：</span>
+                            {Object.entries(tagConfig).map(([key, config]) => {
+                              const tag = key as QualityTag
+                              const IconComponent = config.icon
+                              return (
+                                <button
+                                  key={key}
+                                  onClick={() => submitQuality(conversation.conversation_id, tag)}
+                                  className={`flex items-center gap-1 px-3 py-1 rounded border ${config.bgColor} ${config.color} hover:opacity-80 transition-opacity`}
+                                >
+                                  <IconComponent className="w-4 h-4" />
+                                  <span className="text-sm">{config.label}</span>
+                                </button>
+                              )
+                            })}
                             <button
-                              onClick={() => {
-                                setManualReviewConversationId(
-                                  isManualReview ? null : conversation.conversation_id
-                                )
-                              }}
-                              className="px-3 py-1 text-sm text-primary-600 hover:bg-primary-50 rounded transition-colors"
+                              onClick={() => setManualReviewConversationId(null)}
+                              className="ml-auto p-1 text-text-secondary hover:text-text-primary"
                             >
-                              人工审核
-                            </button>
-                            <button
-                              onClick={() => toggleDetail(conversation.conversation_id)}
-                              className="p-2 text-text-secondary hover:text-primary-600 hover:bg-primary-50 rounded transition-colors"
-                            >
-                              {isExpanded ? (
-                                <ChevronUpIcon className="w-5 h-5" />
-                              ) : (
-                                <ChevronDownIcon className="w-5 h-5" />
-                              )}
+                              <XMarkIcon className="w-4 h-4" />
                             </button>
                           </div>
-                        </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
 
-                        {/* Manual Review Bubble */}
-                        <AnimatePresence>
-                          {isManualReview && (
-                            <motion.div
-                              initial={{ opacity: 0, scale: 0.9, y: -10 }}
-                              animate={{ opacity: 1, scale: 1, y: 0 }}
-                              exit={{ opacity: 0, scale: 0.9, y: -10 }}
-                              className="mt-3 p-3 bg-primary-50 rounded-lg border border-primary-200"
-                            >
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium text-text-primary">选择质检结果：</span>
-                                {Object.entries(tagConfig).map(([key, config]) => {
-                                  const tag = key as QualityTag
-                                  const IconComponent = config.icon
-                                  return (
-                                    <button
-                                      key={key}
-                                      onClick={() => submitQuality(conversation.conversation_id, tag)}
-                                      className={`flex items-center gap-1 px-3 py-1 rounded border ${config.bgColor} ${config.color} hover:opacity-80 transition-opacity`}
-                                    >
-                                      <IconComponent className="w-4 h-4" />
-                                      <span className="text-sm">{config.label}</span>
-                                    </button>
-                                  )
-                                })}
-                                <button
-                                  onClick={() => setManualReviewConversationId(null)}
-                                  className="ml-auto p-1 text-text-secondary hover:text-text-primary"
+                    {/* Conversation Detail */}
+                    <AnimatePresence>
+                      {isExpanded && conversation.messages && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="mt-4 pt-4 border-t border-primary-200"
+                        >
+                          <div className="space-y-3 max-h-96 overflow-y-auto">
+                            {conversation.messages.map((msg, idx) => {
+                              const isUser = msg.role === 'user' || msg.role === 'USER'
+                              const content = msg.content || msg.text || ''
+                              return (
+                                <div
+                                  key={msg.message_id || idx}
+                                  className={`p-3 rounded-lg ${
+                                    isUser
+                                      ? 'bg-blue-50 border border-blue-200'
+                                      : 'bg-gray-50 border border-gray-200'
+                                  }`}
                                 >
-                                  <XMarkIcon className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-
-                        {/* Conversation Detail */}
-                        <AnimatePresence>
-                          {isExpanded && conversation.messages && (
-                            <motion.div
-                              initial={{ opacity: 0, height: 0 }}
-                              animate={{ opacity: 1, height: 'auto' }}
-                              exit={{ opacity: 0, height: 0 }}
-                              className="mt-4 pt-4 border-t border-primary-200"
-                            >
-                              <div className="space-y-3 max-h-96 overflow-y-auto">
-                                {conversation.messages.map((msg, idx) => {
-                                  const isUser = msg.role === 'user' || msg.role === 'USER'
-                                  const content = msg.content || msg.text || ''
-                                  return (
-                                    <div
-                                      key={msg.message_id || idx}
-                                      className={`p-3 rounded-lg ${
-                                        isUser
-                                          ? 'bg-blue-50 border border-blue-200'
-                                          : 'bg-gray-50 border border-gray-200'
-                                      }`}
-                                    >
-                                      <div className="flex items-start gap-2">
-                                        <span className={`text-xs font-medium ${
-                                          isUser ? 'text-blue-600' : 'text-gray-600'
-                                        }`}>
-                                          {isUser ? '用户' : 'AI'}
-                                        </span>
-                                        <span className="text-xs text-text-tertiary">
-                                          {msg.created_at ? new Date(msg.created_at).toLocaleString('zh-CN') : ''}
-                                        </span>
-                                      </div>
-                                      <p className="mt-1 text-sm text-text-primary whitespace-pre-wrap">
-                                        {content}
-                                      </p>
-                                    </div>
-                                  )
-                                })}
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </div>
-                    </div>
+                                  <div className="flex items-start gap-2">
+                                    <span className={`text-xs font-medium ${
+                                      isUser ? 'text-blue-600' : 'text-gray-600'
+                                    }`}>
+                                      {isUser ? '用户' : 'AI'}
+                                    </span>
+                                    <span className="text-xs text-text-tertiary">
+                                      {msg.created_at ? new Date(msg.created_at).toLocaleString('zh-CN') : ''}
+                                    </span>
+                                  </div>
+                                  <p className="mt-1 text-sm text-text-primary whitespace-pre-wrap">
+                                    {content}
+                                  </p>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </motion.div>
                 )
               })}
@@ -723,47 +722,6 @@ export function ConversationQualityPage() {
           )}
         </div>
       )}
-
-      {/* Floating Action Button - Show when scrolled down */}
-      <AnimatePresence>
-        {showFloatingButton && selectedCount > 0 && selectedQualityAgentId && (
-          <motion.div
-            initial={{ opacity: 0, y: 100 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 100 }}
-            className="fixed bottom-6 right-6 z-40"
-          >
-            <div className="bg-white rounded-lg shadow-xl border border-primary-200 p-4">
-              <div className="flex items-center gap-4">
-                <div className="text-sm text-text-secondary">
-                  已选择 <span className="font-semibold text-primary-600">{selectedCount}</span> 个会话
-                </div>
-                <button
-                  onClick={() => {
-                    runQualityCheck()
-                    // Scroll to top to see results
-                    window.scrollTo({ top: 0, behavior: 'smooth' })
-                  }}
-                  disabled={qualityCheckMutation.isPending}
-                  className="flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors shadow-md"
-                >
-                  {qualityCheckMutation.isPending ? (
-                    <>
-                      <ArrowPathIcon className="w-5 h-5 animate-spin" />
-                      质检中...
-                    </>
-                  ) : (
-                    <>
-                      <PlayIcon className="w-5 h-5" />
-                      运行质检
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Toast Notification */}
       <AnimatePresence>
