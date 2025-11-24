@@ -12,12 +12,16 @@
 {
   "UNRESOLVED": 数值,
   "PARTIALLY_RESOLVED": 数值,
-  "FULLY_RESOLVED": 数值
+  "FULLY_RESOLVED": 数值,
+  "reason": "判断原因的详细说明",
+  "user_intention": "用户在这轮对话中想要处理的事情"
 }
 ```
 
-- 数值范围：0-100（百分比）
-- 三个值的总和可以是任意值（系统会自动处理）
+- **UNRESOLVED, PARTIALLY_RESOLVED, FULLY_RESOLVED**: 三种状态的置信度（百分比，0-100）
+- **reason**: 为什么给出置信度最高的那个tag的判断原因，需要详细说明
+- **user_intention**: 用户在这轮对话中的核心意图和想要解决的问题
+- 三个置信度值的总和可以是任意值（系统会自动处理）
 - 必须只输出 JSON，不要包含其他文字说明
 
 ## System Prompt 示例
@@ -50,6 +54,12 @@
 ## 你的任务
 评估客户与AI助手之间的对话，判断客户问题是否得到有效解决。
 
+## 重要说明
+
+**人工转接场景**：如果对话最后转接到人工客服，需要重点关注AI解决了哪些需求，以体现Agent的有用之处。即使最终转接人工，也要评估AI在转接前解决了哪些问题。
+
+**未转接场景**：如果对话未转接人工，则更偏向于完全解决。
+
 ## 评估标准
 
 ### FULLY_RESOLVED（已解决）- 完全解决
@@ -59,6 +69,7 @@
 - 客户表示满意、感谢或问题已解决
 - 对话自然结束，没有遗留问题
 - AI的回答直接、准确地回应了客户的核心问题
+- **如果转接人工，AI在转接前已解决大部分或全部问题**
 
 ### PARTIALLY_RESOLVED（部分解决）- 部分解决
 符合以下条件：
@@ -84,13 +95,16 @@
 {
   "UNRESOLVED": 数值,
   "PARTIALLY_RESOLVED": 数值,
-  "FULLY_RESOLVED": 数值
+  "FULLY_RESOLVED": 数值,
+  "reason": "判断原因的详细说明",
+  "user_intention": "用户在这轮对话中想要处理的事情"
 }
 ```
 
-- 每个数值范围：0-100（整数）
-- 表示该状态的置信度百分比
-- 三个值的总和可以是任意值（系统会自动归一化处理）
+- **UNRESOLVED, PARTIALLY_RESOLVED, FULLY_RESOLVED**: 每个数值范围：0-100（整数），表示该状态的置信度百分比
+- **reason**: 字符串，详细说明为什么给出置信度最高的那个tag的判断原因
+- **user_intention**: 字符串，描述用户在这轮对话中的核心意图和想要解决的问题
+- 三个置信度值的总和可以是任意值（系统会自动归一化处理）
 - 必须使用双引号包裹键名
 - 不要添加任何注释或说明文字
 
@@ -104,17 +118,34 @@ assistant: 您可以通过以下步骤重置密码：1. 访问登录页面 2. �
 user: 好的，谢谢！
 ```
 输出：
-{"UNRESOLVED": 5, "PARTIALLY_RESOLVED": 10, "FULLY_RESOLVED": 85}
+```json
+{
+  "UNRESOLVED": 5,
+  "PARTIALLY_RESOLVED": 10,
+  "FULLY_RESOLVED": 85,
+  "reason": "AI提供了完整、清晰的密码重置步骤，用户表示感谢，问题已完全解决，对话自然结束。",
+  "user_intention": "用户想要重置账户密码"
+}
+```
 
-**示例2：部分解决**
+**示例2：部分解决（转接人工）**
 输入对话：
 ```
 user: 我的订单为什么还没发货？
 assistant: 订单通常会在1-3个工作日内发货。您可以查看订单详情了解具体状态。
-user: 但是已经5天了
+user: 但是已经5天了，我需要尽快收到
+assistant: 我理解您的着急，让我为您转接人工客服，他们可以帮您查询具体原因。
 ```
 输出：
-{"UNRESOLVED": 30, "PARTIALLY_RESOLVED": 60, "FULLY_RESOLVED": 10}
+```json
+{
+  "UNRESOLVED": 20,
+  "PARTIALLY_RESOLVED": 70,
+  "FULLY_RESOLVED": 10,
+  "reason": "AI提供了订单发货的一般信息，但未能解决用户的具体问题（5天未发货）。虽然转接人工，但AI在转接前解释了发货流程，提供了部分有用信息。",
+  "user_intention": "用户想要了解订单为什么延迟发货，并希望尽快收到商品"
+}
+```
 
 **示例3：未解决**
 输入对话：
@@ -124,7 +155,15 @@ assistant: 我们的产品非常好，您可能会喜欢其他功能。
 user: 不，我要退款
 ```
 输出：
-{"UNRESOLVED": 80, "PARTIALLY_RESOLVED": 15, "FULLY_RESOLVED": 5}
+```json
+{
+  "UNRESOLVED": 80,
+  "PARTIALLY_RESOLVED": 15,
+  "FULLY_RESOLVED": 5,
+  "reason": "AI的回答完全偏离了用户的需求，用户明确要求退款，但AI却推荐其他功能，未能理解或回应用户的核心诉求。",
+  "user_intention": "用户想要申请退款"
+}
+```
 
 ## 注意事项
 
