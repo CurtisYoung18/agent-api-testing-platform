@@ -59,6 +59,7 @@ export function ConversationQualityPage() {
   const [expandedConversationId, setExpandedConversationId] = useState<string | null>(null)
   const [manualReviewConversationId, setManualReviewConversationId] = useState<string | null>(null)
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const [loadingMessagesId, setLoadingMessagesId] = useState<string | null>(null)
 
   // Fetch agents
   const { data: agents, isLoading: agentsLoading } = useQuery({
@@ -179,10 +180,18 @@ export function ConversationQualityPage() {
     
     if (expandedConversationId === conversationId) {
       setExpandedConversationId(null)
+      setLoadingMessagesId(null)
     } else {
       setExpandedConversationId(conversationId)
       if (!conversation?.messages) {
-        await fetchMessages(conversationId)
+        setLoadingMessagesId(conversationId)
+        try {
+          await fetchMessages(conversationId)
+        } catch (error) {
+          console.error('Failed to fetch messages:', error)
+        } finally {
+          setLoadingMessagesId(null)
+        }
       }
     }
   }
@@ -647,43 +656,56 @@ export function ConversationQualityPage() {
 
                     {/* Conversation Detail */}
                     <AnimatePresence>
-                      {isExpanded && conversation.messages && (
+                      {isExpanded && (
                         <motion.div
                           initial={{ opacity: 0, height: 0 }}
                           animate={{ opacity: 1, height: 'auto' }}
                           exit={{ opacity: 0, height: 0 }}
                           className="mt-4 pt-4 border-t border-primary-200"
                         >
-                          <div className="space-y-3 max-h-96 overflow-y-auto">
-                            {conversation.messages.map((msg, idx) => {
-                              const isUser = msg.role === 'user' || msg.role === 'USER'
-                              const content = msg.content || msg.text || ''
-                              return (
-                                <div
-                                  key={msg.message_id || idx}
-                                  className={`p-3 rounded-lg ${
-                                    isUser
-                                      ? 'bg-blue-50 border border-blue-200'
-                                      : 'bg-gray-50 border border-gray-200'
-                                  }`}
-                                >
-                                  <div className="flex items-start gap-2">
-                                    <span className={`text-xs font-medium ${
-                                      isUser ? 'text-blue-600' : 'text-gray-600'
-                                    }`}>
-                                      {isUser ? '用户' : 'AI'}
-                                    </span>
-                                    <span className="text-xs text-text-tertiary">
-                                      {msg.created_at ? new Date(msg.created_at).toLocaleString('zh-CN') : ''}
-                                    </span>
+                          {loadingMessagesId === conversation.conversation_id ? (
+                            <div className="flex items-center justify-center py-8">
+                              <div className="flex flex-col items-center gap-3">
+                                <ArrowPathIcon className="w-8 h-8 animate-spin text-primary-500" />
+                                <span className="text-sm text-text-secondary">加载会话记录中...</span>
+                              </div>
+                            </div>
+                          ) : conversation.messages && conversation.messages.length > 0 ? (
+                            <div className="space-y-3 max-h-96 overflow-y-auto">
+                              {conversation.messages.map((msg, idx) => {
+                                const isUser = msg.role === 'user' || msg.role === 'USER'
+                                const content = msg.content || msg.text || ''
+                                return (
+                                  <div
+                                    key={msg.message_id || idx}
+                                    className={`p-3 rounded-lg ${
+                                      isUser
+                                        ? 'bg-blue-50 border border-blue-200'
+                                        : 'bg-gray-50 border border-gray-200'
+                                    }`}
+                                  >
+                                    <div className="flex items-start gap-2">
+                                      <span className={`text-xs font-medium ${
+                                        isUser ? 'text-blue-600' : 'text-gray-600'
+                                      }`}>
+                                        {isUser ? '用户' : 'AI'}
+                                      </span>
+                                      <span className="text-xs text-text-tertiary">
+                                        {msg.created_at ? new Date(msg.created_at).toLocaleString('zh-CN') : ''}
+                                      </span>
+                                    </div>
+                                    <p className="mt-1 text-sm text-text-primary whitespace-pre-wrap">
+                                      {content}
+                                    </p>
                                   </div>
-                                  <p className="mt-1 text-sm text-text-primary whitespace-pre-wrap">
-                                    {content}
-                                  </p>
-                                </div>
-                              )
-                            })}
-                          </div>
+                                )
+                              })}
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-center py-8">
+                              <span className="text-sm text-text-tertiary">暂无消息记录</span>
+                            </div>
+                          )}
                         </motion.div>
                       )}
                     </AnimatePresence>
