@@ -240,7 +240,10 @@ export function ConversationQualityPage() {
                     <div
                       className={`flex items-center gap-2 px-4 py-2 rounded-lg border ${tagConfig[result.tag].color}`}
                     >
-                      <tagConfig[result.tag].icon className="w-5 h-5" />
+                      {(() => {
+                        const IconComponent = tagConfig[result.tag].icon
+                        return <IconComponent className="w-5 h-5" />
+                      })()}
                       <span className="font-semibold">{tagConfig[result.tag].label}</span>
                     </div>
                   </div>
