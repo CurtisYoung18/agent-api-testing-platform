@@ -120,7 +120,7 @@ ${formattedMessages}
 
 请只输出 JSON，不要其他内容。`;
 
-        const messageResponse = await fetch(`${baseUrl}/v1/message`, {
+        const messageResponse = await fetch(`${baseUrl}/v2/conversation/message`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -128,41 +128,76 @@ ${formattedMessages}
           },
           body: JSON.stringify({
             conversation_id: qualityConversationId,
-            inputs: [
-              {
+            response_mode: 'blocking',
+            messages: [{
+              role: 'user',
+              content: [{
                 type: 'text',
                 text: prompt
-              }
-            ]
+              }]
+            }]
           }),
         });
 
         if (!messageResponse.ok) {
           const errorData = await messageResponse.json().catch(() => ({}));
+          console.error('[error] GPTBots message API error:', errorData);
           return res.status(messageResponse.status).json({
             error: errorData.message || '调用质检 Agent 失败',
-            code: errorData.code
+            code: errorData.code,
+            details: errorData
           });
         }
 
         const messageData = await messageResponse.json();
-        const qualityResult = messageData.text || messageData.output || '';
+        
+        // Parse response text from GPTBots API format
+        let qualityResult = '';
+        if (messageData.output && Array.isArray(messageData.output) && messageData.output.length > 0) {
+          const firstOutput = messageData.output[0];
+          if (firstOutput.content && firstOutput.content.text) {
+            qualityResult = firstOutput.content.text;
+          } else if (firstOutput.text) {
+            qualityResult = firstOutput.text;
+          }
+        }
+        
+        // Fallback to old format
+        if (!qualityResult) {
+          qualityResult = messageData.text || messageData.output || '';
+        }
+        
+        if (!qualityResult) {
+          console.error('[error] Empty quality result:', JSON.stringify(messageData));
+          return res.status(500).json({
+            error: '质检 Agent 返回空响应',
+            rawResponse: messageData
+          });
+        }
 
         // Parse JSON from quality result
         let qualityScores: any = {};
         try {
+          // Clean the result - remove markdown code blocks if present
+          let cleanedResult = qualityResult.trim();
+          
+          // Remove markdown code blocks
+          cleanedResult = cleanedResult.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+          
           // Try to extract JSON from the response
-          const jsonMatch = qualityResult.match(/\{[\s\S]*\}/);
+          const jsonMatch = cleanedResult.match(/\{[\s\S]*\}/);
           if (jsonMatch) {
             qualityScores = JSON.parse(jsonMatch[0]);
           } else {
-            qualityScores = JSON.parse(qualityResult);
+            qualityScores = JSON.parse(cleanedResult);
           }
-        } catch (parseError) {
+        } catch (parseError: any) {
           console.error('[error] Failed to parse quality result:', qualityResult);
+          console.error('[error] Parse error:', parseError.message);
           return res.status(500).json({
             error: '解析质检结果失败',
-            rawResult: qualityResult
+            rawResult: qualityResult,
+            parseError: parseError.message
           });
         }
 
