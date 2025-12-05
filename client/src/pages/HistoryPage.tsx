@@ -29,6 +29,14 @@ export function HistoryPage() {
   const [selectedForCompare, setSelectedForCompare] = useState<number[]>([])
   const [isCompareMode, setIsCompareMode] = useState(false)
   
+  // Search and filter state
+  const [searchQuery, setSearchQuery] = useState('')
+  const [resultFilter, setResultFilter] = useState<'' | 'success' | 'failed'>('')
+  const [sortOption, setSortOption] = useState('testDate-desc')
+  
+  // Parse sort option
+  const [sortBy, sortOrder] = sortOption.split('-') as [string, 'asc' | 'desc']
+  
   // Auto-refresh when navigated from test completion
   useEffect(() => {
     if (location.state?.refresh) {
@@ -38,9 +46,21 @@ export function HistoryPage() {
     }
   }, [location, queryClient])
   
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1)
+  }, [searchQuery, resultFilter, sortOption])
+  
   const { data, isLoading } = useQuery({
-    queryKey: ['history', page],
-    queryFn: () => historyApi.getAll({ page, limit: 20 }),
+    queryKey: ['history', page, searchQuery, resultFilter, sortBy, sortOrder],
+    queryFn: () => historyApi.getAll({ 
+      page, 
+      limit: 20,
+      search: searchQuery || undefined,
+      resultFilter: resultFilter || undefined,
+      sortBy,
+      sortOrder,
+    }),
   })
 
   const deleteMutation = useMutation({
@@ -156,17 +176,28 @@ export function HistoryPage() {
             type="text"
             placeholder="搜索..."
             className="input-field pl-10"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <select className="input-field w-48">
+        <select 
+          className="input-field w-48"
+          value={resultFilter}
+          onChange={(e) => setResultFilter(e.target.value as '' | 'success' | 'failed')}
+        >
           <option value="">所有结果</option>
           <option value="success">仅成功 (&gt;80%)</option>
           <option value="failed">失败测试 (&lt;80%)</option>
         </select>
-        <select className="input-field w-48">
+        <select 
+          className="input-field w-48"
+          value={sortOption}
+          onChange={(e) => setSortOption(e.target.value)}
+        >
           <option value="testDate-desc">最新优先</option>
           <option value="testDate-asc">最旧优先</option>
           <option value="successRate-desc">成功率 (高到低)</option>
+          <option value="successRate-asc">成功率 (低到高)</option>
         </select>
       </div>
 

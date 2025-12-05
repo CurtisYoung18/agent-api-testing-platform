@@ -73,18 +73,61 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
       const offset = (page - 1) * limit;
+      
+      // Search and filter parameters
+      const search = req.query.search as string | undefined;
+      const resultFilter = req.query.resultFilter as string | undefined;
+      const sortBy = req.query.sortBy as string || 'testDate';
+      const sortOrder = req.query.sortOrder as string || 'desc';
+      
+      // Build WHERE conditions
+      const conditions: string[] = [];
+      const params: any[] = [];
+      let paramIndex = 1;
+      
+      // Search filter - search in agent name
+      if (search && search.trim()) {
+        conditions.push(`(h.agent_name ILIKE $${paramIndex} OR a.name ILIKE $${paramIndex})`);
+        params.push(`%${search.trim()}%`);
+        paramIndex++;
+      }
+      
+      // Result filter - success (>=80%) or failed (<80%)
+      if (resultFilter === 'success') {
+        conditions.push(`h.success_rate >= 80`);
+      } else if (resultFilter === 'failed') {
+        conditions.push(`h.success_rate < 80`);
+      }
+      
+      const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+      
+      // Build ORDER BY clause
+      const sortColumnMap: Record<string, string> = {
+        'testDate': 'h.test_date',
+        'successRate': 'h.success_rate',
+        'agentName': 'h.agent_name',
+      };
+      const sortColumn = sortColumnMap[sortBy] || 'h.test_date';
+      const sortDirection = sortOrder === 'asc' ? 'ASC' : 'DESC';
+      const orderClause = `ORDER BY ${sortColumn} ${sortDirection}`;
 
-      const countResult = await pool.query('SELECT COUNT(*) FROM test_history');
+      // Count query with filters
+      const countResult = await pool.query(
+        `SELECT COUNT(*) FROM test_history h LEFT JOIN agents a ON h.agent_id = a.id ${whereClause}`,
+        params
+      );
       const total = parseInt(countResult.rows[0].count);
 
+      // Data query with filters, sorting and pagination
       const result = await pool.query(
         `SELECT h.*, 
                 a.id as agent_id, a.name as agent_name, a.region as agent_region, a.model_name
          FROM test_history h
          LEFT JOIN agents a ON h.agent_id = a.id
-         ORDER BY h.test_date DESC
-         LIMIT $1 OFFSET $2`,
-        [limit, offset]
+         ${whereClause}
+         ${orderClause}
+         LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+        [...params, limit, offset]
       );
 
       const formattedHistory = result.rows.map((record: any) => ({

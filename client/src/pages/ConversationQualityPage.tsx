@@ -467,8 +467,12 @@ export function ConversationQualityPage() {
                           {/* Header Row */}
                           <div className="flex items-start justify-between gap-4">
                             <div className="flex-1 min-w-0">
-                              <h3 className="font-semibold text-text-primary break-words">
-                                {conversation.subject || '无主题'}
+                              <h3 className="font-semibold text-text-primary break-words" title={conversation.subject || '无主题'}>
+                                {conversation.subject 
+                                  ? (conversation.subject.length > 20 
+                                      ? conversation.subject.slice(0, 20) + '...' 
+                                      : conversation.subject)
+                                  : '无主题'}
                               </h3>
                               <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
                                 <div className="text-text-secondary">

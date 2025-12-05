@@ -93,8 +93,8 @@ export const historyApi = {
     page?: number;
     limit?: number;
     agentId?: number;
-    minSuccessRate?: number;
-    maxSuccessRate?: number;
+    search?: string;
+    resultFilter?: '' | 'success' | 'failed';
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
   }) => api.get<{ data: TestHistory[]; pagination: any }>('/history', { params }).then((res) => res.data),
