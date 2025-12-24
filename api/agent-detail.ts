@@ -47,6 +47,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         apiKey: agent.api_key.length > 14
           ? `${agent.api_key.slice(0, 10)}***${agent.api_key.slice(-4)}`
           : '***',
+        customBaseUrl: agent.custom_base_url || undefined,
         status: agent.status,
         lastUsed: agent.last_used,
         createdAt: agent.created_at,
@@ -56,9 +57,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // PUT - Update agent
     if (req.method === 'PUT') {
-      const { name, modelName, region, apiKey, status } = req.body;
+      const { name, modelName, region, apiKey, customBaseUrl, status } = req.body;
 
-      console.log('Update agent request:', { agentId, name, modelName, region, status });
+      console.log('Update agent request:', { agentId, name, modelName, region, status, hasCustomBaseUrl: !!customBaseUrl });
+
+      if (region === 'CUSTOM' && !customBaseUrl) {
+        return res.status(400).json({ error: '选择自定义地址时，必须填写自定义Base URL' });
+      }
 
       const updates: string[] = [];
       const values: any[] = [];
@@ -73,7 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         values.push(modelName || null);
       }
       if (region) {
-        if (!['SG', 'CN'].includes(region)) {
+        if (!['SG', 'CN', 'CUSTOM'].includes(region)) {
           return res.status(400).json({ error: '无效的区域' });
         }
         updates.push(`region = $${paramIndex++}`);
@@ -82,6 +87,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (apiKey) {
         updates.push(`api_key = $${paramIndex++}`);
         values.push(apiKey);
+      }
+      if (customBaseUrl !== undefined) {
+        updates.push(`custom_base_url = $${paramIndex++}`);
+        values.push(customBaseUrl || null);
       }
       if (status) {
         updates.push(`status = $${paramIndex++}`);
@@ -114,6 +123,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         apiKey: agent.api_key.length > 14
           ? `${agent.api_key.slice(0, 10)}***${agent.api_key.slice(-4)}`
           : '***',
+        customBaseUrl: agent.custom_base_url || undefined,
         status: agent.status,
         lastUsed: agent.last_used,
         createdAt: agent.created_at,

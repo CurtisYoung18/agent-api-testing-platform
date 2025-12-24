@@ -5,8 +5,9 @@
 CREATE TABLE IF NOT EXISTS agents (
   id SERIAL PRIMARY KEY,
   name VARCHAR(100) NOT NULL,
-  region VARCHAR(10) NOT NULL CHECK (region IN ('SG', 'CN')),
+  region VARCHAR(10) NOT NULL CHECK (region IN ('SG', 'CN', 'CUSTOM')),
   api_key VARCHAR(255) NOT NULL,
+  custom_base_url VARCHAR(500),
   status VARCHAR(20) DEFAULT 'active',
   last_used TIMESTAMP,
   created_at TIMESTAMP DEFAULT NOW(),

@@ -15,7 +15,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (req.method === 'GET') {
       const result = await pool.query(
-        'SELECT id, name, model_name, region, api_key, status, last_used, created_at, updated_at FROM agents ORDER BY created_at DESC'
+        'SELECT id, name, model_name, region, api_key, custom_base_url, status, last_used, created_at, updated_at FROM agents ORDER BY created_at DESC'
       );
 
       const maskedAgents = result.rows.map((agent: any) => ({
@@ -26,6 +26,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         apiKey: agent.api_key.length > 14
           ? `${agent.api_key.slice(0, 10)}***${agent.api_key.slice(-4)}`
           : '***',
+        customBaseUrl: agent.custom_base_url || undefined,
         status: agent.status,
         lastUsed: agent.last_used,
         createdAt: agent.created_at,
@@ -36,23 +37,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (req.method === 'POST') {
-      const { name, modelName, region, apiKey } = req.body;
+      const { name, modelName, region, apiKey, customBaseUrl } = req.body;
 
-      console.log('Create agent request:', { name, modelName, region });
+      console.log('Create agent request:', { name, modelName, region, hasCustomBaseUrl: !!customBaseUrl });
 
       if (!name || !region || !apiKey) {
         return res.status(400).json({ error: '缺少必填字段' });
       }
 
-      if (!['SG', 'CN'].includes(region)) {
+      if (!['SG', 'CN', 'CUSTOM'].includes(region)) {
         return res.status(400).json({ error: '无效的区域' });
       }
 
+      if (region === 'CUSTOM' && !customBaseUrl) {
+        return res.status(400).json({ error: '选择自定义地址时，必须填写自定义Base URL' });
+      }
+
       const result = await pool.query(
-        `INSERT INTO agents (name, model_name, region, api_key, status) 
-         VALUES ($1, $2, $3, $4, 'active') 
-         RETURNING id, name, model_name, region, api_key, status, last_used, created_at, updated_at`,
-        [name, modelName || null, region, apiKey]
+        `INSERT INTO agents (name, model_name, region, api_key, custom_base_url, status) 
+         VALUES ($1, $2, $3, $4, $5, 'active') 
+         RETURNING id, name, model_name, region, api_key, custom_base_url, status, last_used, created_at, updated_at`,
+        [name, modelName || null, region, apiKey, customBaseUrl || null]
       );
 
       const agent = result.rows[0];
@@ -64,6 +69,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         modelName: agent.model_name,
         region: agent.region,
         apiKey: `${agent.api_key.slice(0, 10)}***${agent.api_key.slice(-4)}`,
+        customBaseUrl: agent.custom_base_url || undefined,
         status: agent.status,
         lastUsed: agent.last_used,
         createdAt: agent.created_at,

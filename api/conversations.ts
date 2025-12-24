@@ -23,7 +23,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Get agent info from database
       const agentResult = await pool.query(
-        'SELECT id, name, region, api_key FROM agents WHERE id = $1',
+        'SELECT id, name, region, api_key, custom_base_url FROM agents WHERE id = $1',
         [agentId]
       );
 
@@ -32,9 +32,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const agent = agentResult.rows[0];
-      const baseUrl = agent.region === 'SG' 
-        ? 'https://api.gptbots.ai'
-        : 'https://api.gptbots.cn';
+      const baseUrl = agent.region === 'CUSTOM' && agent.custom_base_url
+        ? agent.custom_base_url
+        : agent.region === 'SG' 
+          ? 'https://api.gptbots.ai'
+          : 'https://api.gptbots.cn';
 
       // Get bot_id from agent (assuming it's stored or we need to get it from GPTBots)
       // For now, we'll use the agent's API key to get conversations
@@ -87,7 +89,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Get agent info
       const agentResult = await pool.query(
-        'SELECT id, name, region, api_key FROM agents WHERE id = $1',
+        'SELECT id, name, region, api_key, custom_base_url FROM agents WHERE id = $1',
         [agentId]
       );
 
@@ -96,9 +98,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const agent = agentResult.rows[0];
-      const baseUrl = agent.region === 'SG' 
-        ? 'https://api.gptbots.ai'
-        : 'https://api.gptbots.cn';
+      const baseUrl = agent.region === 'CUSTOM' && agent.custom_base_url
+        ? agent.custom_base_url
+        : agent.region === 'SG' 
+          ? 'https://api.gptbots.ai'
+          : 'https://api.gptbots.cn';
 
       // Call GPTBots API to get messages
       const url = new URL(`${baseUrl}/v2/messages`);

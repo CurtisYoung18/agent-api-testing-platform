@@ -1,11 +1,22 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getDbPool } from './db.js';
 
+// Helper function to get base URL
+function getBaseUrl(region: string, customBaseUrl?: string | null): string {
+  if (region === 'CUSTOM' && customBaseUrl) {
+    return customBaseUrl;
+  }
+  return region === 'SG' 
+    ? 'https://api.gptbots.ai'
+    : 'https://api.gptbots.cn';
+}
+
 // Call Quality Agent API to check conversation quality
 async function callQualityAgent(
   qualityAgentApiKey: string,
   qualityAgentRegion: string,
-  messages: Array<{ role: string; content?: string; text?: string }>
+  messages: Array<{ role: string; content?: string; text?: string }>,
+  customBaseUrl?: string | null
 ): Promise<{
   success: boolean;
   scores?: { UNRESOLVED: number; PARTIALLY_RESOLVED: number; FULLY_RESOLVED: number };
@@ -14,9 +25,7 @@ async function callQualityAgent(
   error?: string;
 }> {
   try {
-    const baseUrl = qualityAgentRegion === 'SG' 
-      ? 'https://api.gptbots.ai'
-      : 'https://api.gptbots.cn';
+    const baseUrl = getBaseUrl(qualityAgentRegion, customBaseUrl);
 
     // Filter and prepare messages for quality agent
     // We'll send structured messages directly to v2 API, not as formatted string
@@ -314,12 +323,11 @@ async function submitQualityToGPTBots(
   agentApiKey: string,
   agentRegion: string,
   answerId: string,
-  quality: 'UNRESOLVED' | 'PARTIALLY_RESOLVED' | 'FULLY_RESOLVED'
+  quality: 'UNRESOLVED' | 'PARTIALLY_RESOLVED' | 'FULLY_RESOLVED',
+  customBaseUrl?: string | null
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const baseUrl = agentRegion === 'SG' 
-      ? 'https://api.gptbots.ai'
-      : 'https://api.gptbots.cn';
+    const baseUrl = getBaseUrl(agentRegion, customBaseUrl);
 
     console.log('Submitting quality to GPTBots:', {
       baseUrl,
@@ -430,7 +438,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Get quality agent info
       console.log('Fetching quality agent:', qualityAgentId);
       const qualityAgentResult = await pool.query(
-        'SELECT id, name, region, api_key FROM agents WHERE id = $1',
+        'SELECT id, name, region, api_key, custom_base_url FROM agents WHERE id = $1',
         [qualityAgentId]
       );
 
@@ -447,7 +455,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const result = await callQualityAgent(
         qualityAgent.api_key,
         qualityAgent.region,
-        messages
+        messages,
+        qualityAgent.custom_base_url
       );
 
       console.log('Quality agent result:', {
@@ -482,7 +491,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Get agent info
       const agentResult = await pool.query(
-        'SELECT id, name, region, api_key FROM agents WHERE id = $1',
+        'SELECT id, name, region, api_key, custom_base_url FROM agents WHERE id = $1',
         [agentId]
       );
 
@@ -497,7 +506,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         agent.api_key,
         agent.region,
         answerId,
-        quality
+        quality,
+        agent.custom_base_url
       );
 
       if (!submitResult.success) {

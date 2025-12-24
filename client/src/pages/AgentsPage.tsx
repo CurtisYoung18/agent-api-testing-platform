@@ -36,6 +36,7 @@ export function AgentsPage() {
     modelName: '',
     region: 'SG',
     apiKey: '',
+    customBaseUrl: '',
   })
   const [formError, setFormError] = useState('')
 
@@ -57,7 +58,7 @@ export function AgentsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agents'] })
       setIsCreateModalOpen(false)
-      setNewAgent({ name: '', modelName: '', region: 'SG', apiKey: '' })
+      setNewAgent({ name: '', modelName: '', region: 'SG', apiKey: '', customBaseUrl: '' })
       setFormError('')
     },
     onError: () => {
@@ -71,7 +72,7 @@ export function AgentsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agents'] })
       setEditingAgent(null)
-      setNewAgent({ name: '', modelName: '', region: 'SG', apiKey: '' })
+      setNewAgent({ name: '', modelName: '', region: 'SG', apiKey: '', customBaseUrl: '' })
       setFormError('')
     },
     onError: () => {
@@ -94,6 +95,10 @@ export function AgentsPage() {
       setFormError('请填写所有必填字段')
       return
     }
+    if (newAgent.region === 'CUSTOM' && !newAgent.customBaseUrl) {
+      setFormError('选择自定义地址时，必须填写自定义Base URL')
+      return
+    }
     setFormError('')
     createMutation.mutate(newAgent)
   }
@@ -103,8 +108,9 @@ export function AgentsPage() {
     setNewAgent({
       name: agent.name,
       modelName: agent.modelName || '',
-      region: agent.region as 'SG' | 'CN',
+      region: agent.region as 'SG' | 'CN' | 'CUSTOM',
       apiKey: '', // 不显示完整的API Key
+      customBaseUrl: agent.customBaseUrl || '',
     })
     setFormError('')
   }
@@ -117,10 +123,16 @@ export function AgentsPage() {
       return
     }
     
+    if (newAgent.region === 'CUSTOM' && !newAgent.customBaseUrl) {
+      setFormError('选择自定义地址时，必须填写自定义Base URL')
+      return
+    }
+    
     const updateData: Partial<CreateAgentInput> = {
       name: newAgent.name,
       modelName: newAgent.modelName,
       region: newAgent.region,
+      customBaseUrl: newAgent.customBaseUrl,
     }
     
     // Only include apiKey if it's been changed (not empty)
@@ -205,6 +217,11 @@ export function AgentsPage() {
                           <span className="badge badge-secondary flex items-center space-x-1">
                             <CpuChipIcon className="w-3 h-3" />
                             <span>{agent.modelName}</span>
+                          </span>
+                        )}
+                        {agent.region === 'CUSTOM' && agent.customBaseUrl && (
+                          <span className="badge badge-secondary flex items-center space-x-1">
+                            <span>自定义: {agent.customBaseUrl}</span>
                           </span>
                         )}
                         <span className="badge badge-success flex items-center space-x-1">
@@ -324,7 +341,7 @@ export function AgentsPage() {
               if (!createMutation.isPending && !updateMutation.isPending) {
                 setIsCreateModalOpen(false)
                 setEditingAgent(null)
-                setNewAgent({ name: '', modelName: '', region: 'SG', apiKey: '' })
+                setNewAgent({ name: '', modelName: '', region: 'SG', apiKey: '', customBaseUrl: '' })
                 setFormError('')
               }
             }}
@@ -345,7 +362,7 @@ export function AgentsPage() {
                   onClick={() => {
                     setIsCreateModalOpen(false)
                     setEditingAgent(null)
-                    setNewAgent({ name: '', modelName: '', region: 'SG', apiKey: '' })
+                    setNewAgent({ name: '', modelName: '', region: 'SG', apiKey: '', customBaseUrl: '' })
                     setFormError('')
                   }}
                   className="text-text-tertiary hover:text-text-primary transition-colors"
@@ -376,14 +393,34 @@ export function AgentsPage() {
                   </label>
                   <select
                     value={newAgent.region}
-                    onChange={(e) => setNewAgent({ ...newAgent, region: e.target.value as 'SG' | 'CN' })}
+                    onChange={(e) => setNewAgent({ ...newAgent, region: e.target.value as 'SG' | 'CN' | 'CUSTOM', customBaseUrl: e.target.value === 'CUSTOM' ? newAgent.customBaseUrl : '' })}
                     className="input-field"
                     disabled={createMutation.isPending || updateMutation.isPending}
                   >
                     <option value="SG">新加坡 (SG)</option>
                     <option value="CN">中国 (CN)</option>
+                    <option value="CUSTOM">自定义地址</option>
                   </select>
                 </div>
+
+                {newAgent.region === 'CUSTOM' && (
+                  <div>
+                    <label className="block text-sm font-medium text-text-primary mb-1">
+                      自定义Base URL *
+                    </label>
+                    <input
+                      type="text"
+                      value={newAgent.customBaseUrl || ''}
+                      onChange={(e) => setNewAgent({ ...newAgent, customBaseUrl: e.target.value })}
+                      className="input-field"
+                      placeholder="例如: http://27.156.118.33:40443"
+                      disabled={createMutation.isPending || updateMutation.isPending}
+                    />
+                    <p className="text-xs text-text-tertiary mt-1">
+                      系统会自动拼接 /v2/conversation/message 路径
+                    </p>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-sm font-medium text-text-primary mb-1">
@@ -436,7 +473,7 @@ export function AgentsPage() {
                     onClick={() => {
                       setIsCreateModalOpen(false)
                       setEditingAgent(null)
-                      setNewAgent({ name: '', modelName: '', region: 'SG', apiKey: '' })
+                      setNewAgent({ name: '', modelName: '', region: 'SG', apiKey: '', customBaseUrl: '' })
                       setFormError('')
                     }}
                     className="btn-outline flex-1"

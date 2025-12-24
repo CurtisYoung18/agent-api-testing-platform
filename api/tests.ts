@@ -37,8 +37,18 @@ async function parseExcelFile(filePath: string): Promise<{ questions: string[]; 
   return { questions, referenceOutputs };
 }
 
+// Helper function to get base URL
+function getBaseUrl(region: string, customBaseUrl?: string | null): string {
+  if (region === 'CUSTOM' && customBaseUrl) {
+    return customBaseUrl;
+  }
+  return region === 'SG' 
+    ? 'https://api.gptbots.ai'
+    : 'https://api.gptbots.cn';
+}
+
 // Call Agent API
-async function callAgentAPI(apiKey: string, region: string, question: string): Promise<{ 
+async function callAgentAPI(apiKey: string, region: string, question: string, customBaseUrl?: string | null): Promise<{ 
   success: boolean; 
   response?: string; 
   error?: string; 
@@ -50,9 +60,7 @@ async function callAgentAPI(apiKey: string, region: string, question: string): P
   const startTime = Date.now();
   
   try {
-    const baseUrl = region === 'SG' 
-      ? 'https://api.gptbots.ai'
-      : 'https://api.gptbots.cn';
+    const baseUrl = getBaseUrl(region, customBaseUrl);
 
     // Step 1: Create conversation
     const conversationResponse = await fetch(`${baseUrl}/v1/conversation`, {
@@ -201,7 +209,7 @@ async function executeTests(
         });
       }
       
-      const result = await callAgentAPI(agent.api_key, agent.region, question);
+      const result = await callAgentAPI(agent.api_key, agent.region, question, agent.custom_base_url);
       
       let questionTokens = 0;
       let questionCost = 0;
@@ -268,7 +276,7 @@ async function executeTests(
         });
       }
 
-      const result = await callAgentAPI(agent.api_key, agent.region, question);
+      const result = await callAgentAPI(agent.api_key, agent.region, question, agent.custom_base_url);
       
       let questionTokens = 0;
       let questionCost = 0;

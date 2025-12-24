@@ -16,8 +16,9 @@ export interface Agent {
   id: number;
   name: string;
   modelName?: string;
-  region: 'SG' | 'CN';
+  region: 'SG' | 'CN' | 'CUSTOM';
   apiKey: string;
+  customBaseUrl?: string;
   status: string;
   lastUsed: string | null;
   createdAt: string;
@@ -27,15 +28,17 @@ export interface Agent {
 export interface CreateAgentInput {
   name: string;
   modelName?: string;
-  region: 'SG' | 'CN';
+  region: 'SG' | 'CN' | 'CUSTOM';
   apiKey: string;
+  customBaseUrl?: string;
 }
 
 export interface UpdateAgentInput {
   name?: string;
   modelName?: string;
-  region?: 'SG' | 'CN';
+  region?: 'SG' | 'CN' | 'CUSTOM';
   apiKey?: string;
+  customBaseUrl?: string;
   status?: string;
 }
 
