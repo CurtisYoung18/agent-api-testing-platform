@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { agentsApi, type CreateAgentInput } from '@/lib/api'
+import { agentsApi, type CreateAgentInput, type Agent } from '@/lib/api'
 import { AnimatePresence, motion } from 'framer-motion'
 import { 
   CpuChipIcon, 
@@ -14,16 +14,6 @@ import {
   XMarkIcon,
   ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline'
-
-interface Agent {
-  id: number
-  name: string
-  modelName?: string
-  region: string
-  apiKey: string
-  status: string
-  lastUsed: string | null
-}
 
 export function AgentsPage() {
   const queryClient = useQueryClient()
