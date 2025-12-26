@@ -12,6 +12,8 @@ import {
   ArrowPathIcon,
   LinkIcon,
   PaperAirplaneIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
 } from '@heroicons/react/24/outline'
 
 type ApiCategory = 'conversation' | 'workflow' | 'user'
@@ -24,6 +26,7 @@ interface ApiEndpoint {
   description: string
   params: ParamConfig[]
   bodyParams?: ParamConfig[]
+  usesConversationId?: boolean
 }
 
 interface ParamConfig {
@@ -55,6 +58,7 @@ const conversationApis: ApiEndpoint[] = [
     endpoint: '/v2/conversation/message',
     description: '向指定的conversation_id发送消息，获取Agent响应',
     params: [],
+    usesConversationId: true,
     bodyParams: [
       { name: 'conversation_id', type: 'string', required: true, description: '对话唯一标识符' },
       {
@@ -106,6 +110,7 @@ const conversationApis: ApiEndpoint[] = [
     method: 'GET',
     endpoint: '/v2/messages',
     description: '获取指定对话内的所有消息内容',
+    usesConversationId: true,
     params: [
       { name: 'conversation_id', type: 'string', required: true, description: '对话标识符' },
       { name: 'page', type: 'number', required: true, description: '页数', default: '1' },
@@ -230,6 +235,7 @@ export function ApiRequestPage() {
   const [copiedField, setCopiedField] = useState<string | null>(null)
   const [streamingResponse, setStreamingResponse] = useState<string>('')
   const [lastConversationId, setLastConversationId] = useState<string | null>(null)
+  const [isApiListExpanded, setIsApiListExpanded] = useState(true)
   const responseRef = useRef<HTMLDivElement>(null)
 
   const { data: agents } = useQuery({
@@ -274,11 +280,19 @@ export function ApiRequestPage() {
 
   const handleLinkConversation = () => {
     if (lastConversationId) {
-      setSelectedApi('send_message')
       setFormValues((prev) => ({
         ...prev,
         conversation_id: lastConversationId,
       }))
+    }
+  }
+
+  const handleLinkAndNavigate = () => {
+    if (lastConversationId) {
+      setSelectedApi('send_message')
+      setFormValues({
+        conversation_id: lastConversationId,
+      })
     }
   }
 
@@ -425,7 +439,7 @@ export function ApiRequestPage() {
     }
   }
 
-  const renderParamInput = (param: ParamConfig, _isBody: boolean = false) => {
+  const renderParamInput = (param: ParamConfig) => {
     const value = formValues[param.name] ?? param.default ?? ''
 
     if (param.type === 'select' && param.options) {
@@ -468,6 +482,9 @@ export function ApiRequestPage() {
     )
   }
 
+  // Check if current API uses conversation_id
+  const showConversationIdHint = currentApi?.usesConversationId && lastConversationId && !formValues.conversation_id
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -496,9 +513,9 @@ export function ApiRequestPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Left Panel - API Selection & Parameters */}
-        <div className="lg:col-span-1 space-y-4">
+        <div className="lg:col-span-2 space-y-4">
           {/* Agent Selection */}
           <div className="glass-card p-4">
             <label className="block text-sm font-medium text-text-primary mb-2">
@@ -518,45 +535,38 @@ export function ApiRequestPage() {
             </select>
           </div>
 
-          {/* API Selection */}
-          <div className="glass-card p-4">
-            <label className="block text-sm font-medium text-text-primary mb-2">
-              选择接口
-            </label>
-            <div className="space-y-2">
-              {currentApis.map((api) => (
-                <button
-                  key={api.id}
-                  onClick={() => handleApiChange(api.id)}
-                  className={`w-full text-left px-4 py-3 rounded-lg transition-all duration-200 ${
-                    selectedApi === api.id
-                      ? 'bg-primary-100 border-2 border-primary-400'
-                      : 'bg-gray-50 hover:bg-gray-100 border-2 border-transparent'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium text-text-primary">{api.name}</span>
-                    <span
-                      className={`text-xs font-mono px-2 py-1 rounded ${
-                        api.method === 'GET'
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-blue-100 text-blue-700'
-                      }`}
-                    >
-                      {api.method}
-                    </span>
-                  </div>
-                  <p className="text-xs text-text-tertiary mt-1 truncate">{api.endpoint}</p>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Parameters */}
+          {/* Parameters - Moved above API Selection */}
           {currentApi && (
             <div className="glass-card p-4">
-              <h3 className="font-medium text-text-primary mb-4">请求参数</h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-medium text-text-primary">请求参数</h3>
+                <div className="flex items-center space-x-2">
+                  <span
+                    className={`text-xs font-mono px-2 py-1 rounded ${
+                      currentApi.method === 'GET'
+                        ? 'bg-green-100 text-green-700'
+                        : 'bg-blue-100 text-blue-700'
+                    }`}
+                  >
+                    {currentApi.method}
+                  </span>
+                  <span className="text-xs text-text-tertiary font-mono">{currentApi.endpoint}</span>
+                </div>
+              </div>
               <div className="space-y-4">
+                {/* Link Conversation Button - Show for APIs using conversation_id */}
+                {showConversationIdHint && (
+                  <motion.button
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    onClick={handleLinkConversation}
+                    className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-orange-100 text-orange-600 rounded-lg hover:bg-orange-200 transition-colors border border-orange-200"
+                  >
+                    <LinkIcon className="w-4 h-4" />
+                    <span>使用上次的 conversation_id: {lastConversationId?.slice(0, 12)}...</span>
+                  </motion.button>
+                )}
+
                 {/* Query Parameters (for GET) */}
                 {currentApi.params.map((param) => (
                   <div key={param.name}>
@@ -577,22 +587,9 @@ export function ApiRequestPage() {
                       {param.required && <span className="text-red-500 ml-1">*</span>}
                     </label>
                     <p className="text-xs text-text-tertiary mb-2">{param.description}</p>
-                    {renderParamInput(param, true)}
+                    {renderParamInput(param)}
                   </div>
                 ))}
-
-                {/* Link Conversation Button */}
-                {currentApi.id === 'send_message' && lastConversationId && !formValues.conversation_id && (
-                  <motion.button
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    onClick={handleLinkConversation}
-                    className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-primary-100 text-primary-600 rounded-lg hover:bg-primary-200 transition-colors"
-                  >
-                    <LinkIcon className="w-4 h-4" />
-                    <span>使用上次创建的对话ID</span>
-                  </motion.button>
-                )}
               </div>
             </div>
           )}
@@ -615,11 +612,56 @@ export function ApiRequestPage() {
               </>
             )}
           </button>
+
+          {/* API Selection - Collapsible */}
+          <div className="glass-card overflow-hidden">
+            <button
+              onClick={() => setIsApiListExpanded(!isApiListExpanded)}
+              className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+            >
+              <span className="text-sm font-medium text-text-primary">
+                选择接口 ({currentApis.length})
+              </span>
+              {isApiListExpanded ? (
+                <ChevronUpIcon className="w-5 h-5 text-text-tertiary" />
+              ) : (
+                <ChevronDownIcon className="w-5 h-5 text-text-tertiary" />
+              )}
+            </button>
+            {isApiListExpanded && (
+              <div className="px-4 pb-4 space-y-2">
+                {currentApis.map((api) => (
+                  <button
+                    key={api.id}
+                    onClick={() => handleApiChange(api.id)}
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-all duration-200 ${
+                      selectedApi === api.id
+                        ? 'bg-primary-100 border-2 border-primary-400'
+                        : 'bg-gray-50 hover:bg-gray-100 border-2 border-transparent'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-text-primary text-sm">{api.name}</span>
+                      <span
+                        className={`text-xs font-mono px-1.5 py-0.5 rounded ${
+                          api.method === 'GET'
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-blue-100 text-blue-700'
+                        }`}
+                      >
+                        {api.method}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Right Panel - Response */}
-        <div className="lg:col-span-2">
-          <div className="glass-card p-4 h-full">
+        {/* Right Panel - Response (Larger) */}
+        <div className="lg:col-span-3">
+          <div className="glass-card p-4 h-full flex flex-col">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-medium text-text-primary">响应结果</h3>
               {response && (
@@ -657,19 +699,19 @@ export function ApiRequestPage() {
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-primary-50 border border-primary-200 rounded-lg p-4 mb-4"
+                className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-4"
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-primary-700">Conversation ID</p>
-                    <p className="text-sm font-mono text-primary-600 mt-1">
+                    <p className="text-sm font-medium text-orange-700">Conversation ID</p>
+                    <p className="text-sm font-mono text-orange-600 mt-1">
                       {response.conversation_id}
                     </p>
                   </div>
                   <div className="flex items-center space-x-2">
                     <button
                       onClick={() => copyToClipboard(response.conversation_id, 'conv_id')}
-                      className="p-2 text-primary-500 hover:bg-primary-100 rounded-lg transition-colors"
+                      className="p-2 text-orange-500 hover:bg-orange-100 rounded-lg transition-colors"
                     >
                       {copiedField === 'conv_id' ? (
                         <CheckIcon className="w-5 h-5" />
@@ -679,8 +721,8 @@ export function ApiRequestPage() {
                     </button>
                     {currentApi?.id === 'create_conversation' && (
                       <button
-                        onClick={handleLinkConversation}
-                        className="flex items-center space-x-1 px-3 py-2 bg-primary-400 text-white rounded-lg hover:bg-primary-500 transition-colors"
+                        onClick={handleLinkAndNavigate}
+                        className="flex items-center space-x-1 px-3 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
                       >
                         <LinkIcon className="w-4 h-4" />
                         <span>衔接对话</span>
@@ -719,7 +761,7 @@ export function ApiRequestPage() {
 
             {/* Streaming Response */}
             {streamingResponse && (
-              <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+              <div className="mb-4 p-4 bg-gray-100 rounded-lg border border-gray-200">
                 <p className="text-sm font-medium text-text-primary mb-2">流式响应:</p>
                 <pre className="text-sm text-text-secondary whitespace-pre-wrap break-words">
                   {streamingResponse}
@@ -727,20 +769,43 @@ export function ApiRequestPage() {
               </div>
             )}
 
-            {/* Full Response */}
+            {/* Full Response - Postman Style */}
             <div
               ref={responseRef}
-              className="bg-gray-900 rounded-lg p-4 min-h-[400px] max-h-[600px] overflow-auto"
+              className="flex-1 rounded-lg overflow-hidden"
+              style={{ backgroundColor: '#1e1e1e' }}
             >
-              {response ? (
-                <pre className="text-sm text-green-400 font-mono whitespace-pre-wrap break-words">
-                  {JSON.stringify(response, null, 2)}
-                </pre>
-              ) : (
-                <div className="flex items-center justify-center h-full text-gray-500">
-                  <p>响应结果将显示在这里</p>
-                </div>
-              )}
+              <div 
+                className="p-4 min-h-[500px] max-h-[700px] overflow-auto"
+                style={{ backgroundColor: '#1e1e1e' }}
+              >
+                {response ? (
+                  <pre 
+                    className="text-sm font-mono whitespace-pre-wrap break-words"
+                    style={{ color: '#9cdcfe' }}
+                  >
+                    {JSON.stringify(response, null, 2)
+                      .replace(/"([^"]+)":/g, '<key>"$1"</key>:')
+                      .split('\n')
+                      .map((line, i) => {
+                        // Simple syntax highlighting
+                        const highlighted = line
+                          .replace(/<key>"([^"]+)"<\/key>/g, (_, key) => `<span style="color:#9cdcfe">"${key}"</span>`)
+                          .replace(/: "([^"]*)"/g, ': <span style="color:#ce9178">"$1"</span>')
+                          .replace(/: (\d+)/g, ': <span style="color:#b5cea8">$1</span>')
+                          .replace(/: (true|false)/g, ': <span style="color:#569cd6">$1</span>')
+                          .replace(/: (null)/g, ': <span style="color:#569cd6">$1</span>')
+                        return (
+                          <div key={i} dangerouslySetInnerHTML={{ __html: highlighted }} />
+                        )
+                      })}
+                  </pre>
+                ) : (
+                  <div className="flex items-center justify-center h-full" style={{ minHeight: '400px' }}>
+                    <p style={{ color: '#6a6a6a' }}>响应结果将显示在这里</p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -748,4 +813,3 @@ export function ApiRequestPage() {
     </div>
   )
 }
-
