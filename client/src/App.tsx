@@ -5,6 +5,7 @@ import { AgentsPage } from './pages/AgentsPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { ComparePage } from './pages/ComparePage'
 import { ConversationQualityPage } from './pages/ConversationQualityPage'
+import { ApiRequestPage } from './pages/ApiRequestPage'
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/compare" element={<ComparePage />} />
           <Route path="/quality" element={<ConversationQualityPage />} />
+          <Route path="/api-request" element={<ApiRequestPage />} />
         </Routes>
       </Layout>
     </Router>

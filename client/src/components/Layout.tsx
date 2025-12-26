@@ -1,6 +1,6 @@
 import { ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
-import { BeakerIcon, CpuChipIcon, ClockIcon, ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline'
+import { BeakerIcon, CpuChipIcon, ClockIcon, ChatBubbleLeftRightIcon, CommandLineIcon } from '@heroicons/react/24/outline'
 
 interface LayoutProps {
   children: ReactNode
@@ -12,6 +12,7 @@ export function Layout({ children }: LayoutProps) {
     { to: '/agents', label: 'Agents', icon: CpuChipIcon },
     { to: '/history', label: '历史记录', icon: ClockIcon },
     { to: '/quality', label: '对话质检', icon: ChatBubbleLeftRightIcon },
+    { to: '/api-request', label: 'API请求', icon: CommandLineIcon },
   ]
 
   return (
