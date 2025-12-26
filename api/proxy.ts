@@ -44,7 +44,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const agent = agentResult.rows[0];
+    console.log('[proxy] Agent:', { 
+      id: agent.id, 
+      name: agent.name, 
+      region: agent.region, 
+      hasCustomUrl: !!agent.custom_base_url,
+      customUrl: agent.custom_base_url 
+    });
+
     const baseUrl = getBaseUrl(agent.region, agent.custom_base_url);
+    console.log('[proxy] BaseUrl:', baseUrl);
 
     // Build URL with query params
     let url = `${baseUrl}${endpoint}`;
@@ -58,7 +67,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       url += `?${params.toString()}`;
     }
 
-    console.log('[proxy] Request:', { url, method: method || 'POST', hasBody: !!body });
+    console.log('[proxy] Request:', { url, method: method || 'POST', hasBody: !!body, body: body ? JSON.stringify(body).slice(0, 200) : null });
 
     // Make request to GPTBots API
     const requestMethod = method || 'POST';
@@ -139,10 +148,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
   } catch (error: any) {
-    console.error('[proxy] Error:', error);
+    console.error('[proxy] Error:', error.message, error.stack);
     return res.status(500).json({
       error: error.message || '服务器错误',
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      cause: error.cause?.message || undefined,
+      type: error.name || 'Error',
     });
   } finally {
     try {
