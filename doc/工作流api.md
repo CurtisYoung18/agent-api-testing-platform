@@ -117,3 +117,82 @@ curl -X POST 'https://api-${endpoint}.gptbots.ai/v1/workflow/invoke' \
 | totalTokens           | number | 总消耗 Token 数（所有节点总和）。                            |
 | startTime             | number | 开始时间戳，毫秒级。                                         |
 | endTime               | number | 结束时间戳，毫秒级。                                         |
+
+
+查询工作流运行结果
+ 最新更新：3 个月前
+使用 workflowRunId，查询工作流的运行结果。
+
+请求方式
+POST
+
+调用地址
+https://api-${endpoint}.gptbots.ai/v1/workflow/query/result
+
+调用验证
+详情参见 API 概述 的鉴权方式说明。
+
+请求
+请求示例
+curl -X POST 'https://api-${endpoint}.gptbots.ai/v1/workflow/query/result' \
+-H 'Authorization: Bearer ${API Key}' \
+-H 'Content-Type: application/json' \
+-d '{
+    "workflowRunId": "xxxxxxxx"
+}'
+请求头
+字段	类型	必填	说明
+Authorization	Bearer ${API Key}	是	使用 Authorization: Bearer ${API Key} 进行调用验证，请在 API 密钥页面获取密钥作为 API Key。
+Content-Type	application/json	是	数据类型，固定值为 application/json。
+请求体
+字段	类型	必填	说明
+workflowRunId	String	是	工作流的运行 ID。
+响应
+响应示例
+{
+    "workflowId": "xxxxxxxx",
+    "workflowName": "todayNews",
+    "workflowVersion": "1.0.1",
+    "workflowRunId": "xxxxxxxx",
+    "input": {
+        "topic": "News"
+    },
+    "output": {
+        "news": [
+            {
+                "summary": "Fatal crash shuts down major highway in Haleiwa. According to Emergency Medical Services, paramedics responded to the scene of the crash Wednesday morning.",
+                "media": "Hawaii News Now",
+                "title": "Hawaii News Now - Breaking News, Latest News, Weather & Traffic"
+            },
+            {
+                "summary": "Hawaii Crime: Man, 65, critically injured in Waikīkī assault. Jamil Hart found guilty in Mililani murder case. HPD busts illegal gambling room in Nanakuli.",
+                "media": "KHON2",
+                "title": "KHON2: Hawaii News, Weather, Sports, Breaking News & Live"
+            }
+        ]
+    },
+    "workflowExecutionTime": 8347,
+    "status": "SUCCEED",
+    "totalCost": 0.6928,
+    "totalTokens": 1745,
+    "startTime": 1758765323024,
+    "endTime": 1758765331373
+}
+响应体
+字段	类型	说明
+workflowId	String	工作流 ID。
+workflowName	String	工作流名称。
+workflowVersion	String	工作流版本号。
+workflowRunId	String	工作流运行 ID，用于唯一标识本次执行。
+input	Object	“开始”节点的输入内容，与请求中的 input 相同。
+output	Object	“结束”节点的输出内容，包含工作流执行的结果。
+workflowExecutionTime	Number	工作流执行耗时，单位为毫秒。
+status	String	工作流的调用状态，可能的值包括：
+- SUCCEED：成功
+- FAILED：失败
+- PENDING：队列中
+- RUNNING：运行中
+totalCost	Number	本次运行的总消耗积分。
+totalTokens	Number	本次运行的总消耗 Token。
+startTime	Number	开始时间戳，毫秒级。
+endTime	Number	结束时间戳，毫秒级。

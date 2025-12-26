@@ -14,14 +14,16 @@ import {
   PaperAirplaneIcon,
   ChevronDownIcon,
   ChevronUpIcon,
+  CircleStackIcon,
+  BookOpenIcon,
 } from '@heroicons/react/24/outline'
 
-type ApiCategory = 'conversation' | 'workflow' | 'user'
+type ApiCategory = 'conversation' | 'workflow' | 'user' | 'database' | 'knowledge'
 
 interface ApiEndpoint {
   id: string
   name: string
-  method: 'GET' | 'POST'
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE'
   endpoint: string
   description: string
   params: ParamConfig[]
@@ -159,28 +161,6 @@ const conversationApis: ApiEndpoint[] = [
       },
     ],
   },
-  {
-    id: 'message_quality',
-    name: '消息质量标记',
-    method: 'POST',
-    endpoint: '/v1/message/quality',
-    description: '标记消息的解决质量',
-    params: [],
-    bodyParams: [
-      { name: 'answer_id', type: 'string', required: true, description: 'Agent回复的消息ID' },
-      {
-        name: 'quality',
-        type: 'select',
-        required: true,
-        description: '质量标记',
-        options: [
-          { value: 'UNRESOLVED', label: '未解决' },
-          { value: 'PARTIALLY_RESOLVED', label: '部分解决' },
-          { value: 'FULLY_RESOLVED', label: '完全解决' },
-        ],
-      },
-    ],
-  },
 ]
 
 const workflowApis: ApiEndpoint[] = [
@@ -194,6 +174,17 @@ const workflowApis: ApiEndpoint[] = [
     bodyParams: [
       { name: 'userId', type: 'string', required: false, description: '用户ID（可选）' },
       { name: 'input', type: 'json', required: true, description: '工作流输入参数(JSON格式)', default: '{}' },
+    ],
+  },
+  {
+    id: 'query_workflow_result',
+    name: '查询工作流运行结果',
+    method: 'POST',
+    endpoint: '/v1/workflow/query/result',
+    description: '使用workflowRunId查询工作流的运行结果',
+    params: [],
+    bodyParams: [
+      { name: 'workflowRunId', type: 'string', required: true, description: '工作流运行ID' },
     ],
   },
 ]
@@ -224,6 +215,219 @@ const userApis: ApiEndpoint[] = [
   },
 ]
 
+const databaseApis: ApiEndpoint[] = [
+  {
+    id: 'create_table',
+    name: '创建数据表',
+    method: 'POST',
+    endpoint: '/v1/database/create-table',
+    description: '为Agent创建新的数据表及其表字段',
+    params: [],
+    bodyParams: [
+      { name: 'name', type: 'string', required: true, description: '表名称(32字符,a~z/数字/下划线)' },
+      { name: 'description', type: 'string', required: true, description: '表描述(128字符)' },
+      { name: 'fields', type: 'json', required: true, description: '表字段数组', default: '[{"name":"id","description":"ID","type":"TEXT","required":true,"unique":true}]' },
+    ],
+  },
+  {
+    id: 'import_records',
+    name: '添加表数据',
+    method: 'POST',
+    endpoint: '/v1/database/import/records',
+    description: '批量添加数据到指定数据表(最多1000行)',
+    params: [],
+    bodyParams: [
+      { name: 'table_id', type: 'string', required: true, description: '表ID' },
+      { name: 'records', type: 'json', required: true, description: '数据记录数组', default: '[{"values":{"id":"1","name":"test"}}]' },
+    ],
+  },
+  {
+    id: 'query_import_status',
+    name: '查询添加状态',
+    method: 'GET',
+    endpoint: '/v1/database/query/import-results',
+    description: '查询添加表数据任务的处理状态',
+    params: [
+      { name: 'ids', type: 'string', required: true, description: '任务ID(多个用逗号分隔)' },
+    ],
+  },
+  {
+    id: 'update_record',
+    name: '更新表数据',
+    method: 'POST',
+    endpoint: '/v2/database/update/record',
+    description: '批量更新数据表中的指定记录(最多100条)',
+    params: [],
+    bodyParams: [
+      { name: 'table_id', type: 'string', required: true, description: '表ID' },
+      { name: 'is_create', type: 'boolean', required: false, description: '记录不存在时是否创建' },
+      { name: 'update_data', type: 'json', required: true, description: '更新数据数组', default: '[{"record_id":"123","updated_fields":{"name":"new_name"}}]' },
+    ],
+  },
+  {
+    id: 'get_records',
+    name: '获取数据库记录',
+    method: 'POST',
+    endpoint: '/v1/database/records/page',
+    description: '获取指定数据表的分页记录数据',
+    params: [],
+    bodyParams: [
+      { name: 'table_id', type: 'string', required: true, description: '表ID' },
+      { name: 'page', type: 'number', required: true, description: '页码', default: '1' },
+      { name: 'page_size', type: 'number', required: true, description: '每页数量(1-100)', default: '20' },
+      { name: 'filter', type: 'json', required: false, description: '过滤条件(JSON)', default: '{}' },
+      { name: 'keyword', type: 'string', required: false, description: '关键词模糊查询' },
+    ],
+  },
+  {
+    id: 'delete_record',
+    name: '删除表数据',
+    method: 'POST',
+    endpoint: '/v2/database/delete/record',
+    description: '批量删除数据表中的指定记录(最多1000条)',
+    params: [],
+    bodyParams: [
+      { name: 'table_id', type: 'string', required: true, description: '表ID' },
+      { name: 'delete_data', type: 'json', required: true, description: '删除数据数组', default: '[{"record_id":"123"}]' },
+    ],
+  },
+]
+
+const knowledgeApis: ApiEndpoint[] = [
+  {
+    id: 'get_knowledge_bases',
+    name: '获取知识库列表',
+    method: 'GET',
+    endpoint: '/v1/bot/knowledge/base/page',
+    description: '获取Agent内的知识库列表',
+    params: [],
+  },
+  {
+    id: 'get_docs',
+    name: '获取知识文档列表',
+    method: 'GET',
+    endpoint: '/v1/bot/doc/query/page',
+    description: '获取知识库的文档列表',
+    params: [
+      { name: 'knowledge_base_id', type: 'string', required: true, description: '知识库ID' },
+      { name: 'page', type: 'number', required: true, description: '页码', default: '1' },
+      { name: 'page_size', type: 'number', required: true, description: '每页数量(10-100)', default: '20' },
+    ],
+  },
+  {
+    id: 'add_text_doc',
+    name: '添加文本类文档',
+    method: 'POST',
+    endpoint: '/v1/bot/doc/text/add',
+    description: '批量添加文本类型文档到知识库',
+    params: [],
+    bodyParams: [
+      { name: 'knowledge_base_id', type: 'string', required: false, description: '目标知识库ID(可选)' },
+      { name: 'chunk_token', type: 'number', required: false, description: '分块最大Token数(1-1000)', default: '600' },
+      { name: 'splitter', type: 'string', required: false, description: '分块分隔符' },
+      { name: 'files', type: 'json', required: true, description: '文档列表', default: '[{"file_url":"https://example.com/doc.pdf","file_name":"doc.pdf"}]' },
+    ],
+  },
+  {
+    id: 'add_spreadsheet_doc',
+    name: '添加表格类文档',
+    method: 'POST',
+    endpoint: '/v1/bot/doc/spreadsheet/add',
+    description: '批量添加表格类型文档到知识库',
+    params: [],
+    bodyParams: [
+      { name: 'knowledge_base_id', type: 'string', required: false, description: '目标知识库ID(可选)' },
+      { name: 'chunk_token', type: 'number', required: false, description: '分块最大Token数(1-1000)', default: '600' },
+      { name: 'header_row', type: 'number', required: false, description: '表头行数(1-5)', default: '1' },
+      { name: 'files', type: 'json', required: true, description: '文档列表', default: '[{"file_url":"https://example.com/data.xlsx","file_name":"data.xlsx"}]' },
+    ],
+  },
+  {
+    id: 'update_text_doc',
+    name: '更新文本类文档',
+    method: 'PUT',
+    endpoint: '/v1/bot/doc/text/update',
+    description: '批量更新文本类型文档',
+    params: [],
+    bodyParams: [
+      { name: 'chunk_token', type: 'number', required: false, description: '分块最大Token数', default: '600' },
+      { name: 'splitter', type: 'string', required: false, description: '分块分隔符' },
+      { name: 'files', type: 'json', required: true, description: '文档列表(含doc_id)', default: '[{"doc_id":"xxx","file_url":"https://example.com/doc.pdf"}]' },
+    ],
+  },
+  {
+    id: 'update_spreadsheet_doc',
+    name: '更新表格类文档',
+    method: 'PUT',
+    endpoint: '/v1/bot/doc/spreadsheet/update',
+    description: '批量更新表格类型文档',
+    params: [],
+    bodyParams: [
+      { name: 'chunk_token', type: 'number', required: false, description: '分块最大Token数', default: '600' },
+      { name: 'header_row', type: 'number', required: false, description: '表头行数(1-5)', default: '1' },
+      { name: 'files', type: 'json', required: true, description: '文档列表(含doc_id)', default: '[{"doc_id":"xxx","file_url":"https://example.com/data.xlsx"}]' },
+    ],
+  },
+  {
+    id: 'delete_docs',
+    name: '删除知识文档',
+    method: 'DELETE',
+    endpoint: '/v1/bot/doc/batch/delete',
+    description: '从知识库删除文档',
+    params: [
+      { name: 'doc', type: 'string', required: true, description: '文档ID(多个用逗号分隔)' },
+    ],
+  },
+  {
+    id: 'add_chunks',
+    name: '添加知识块',
+    method: 'POST',
+    endpoint: '/v1/bot/doc/chunks/add',
+    description: '为文本类文档添加知识块',
+    params: [],
+    bodyParams: [
+      { name: 'doc_id', type: 'string', required: true, description: '文档ID' },
+      { name: 'chunks', type: 'json', required: true, description: '知识块数组', default: '[{"content":"This is a chunk.","keywords":["keyword1"]}]' },
+    ],
+  },
+  {
+    id: 'query_doc_status',
+    name: '查询文档状态',
+    method: 'GET',
+    endpoint: '/v1/bot/data/detail/list',
+    description: '查询知识库文档的处理状态',
+    params: [
+      { name: 'data_ids', type: 'string', required: true, description: '文档ID(多个用逗号分隔)' },
+    ],
+  },
+  {
+    id: 'vector_match',
+    name: '向量相似度匹配',
+    method: 'POST',
+    endpoint: '/v1/vector/match',
+    description: '在知识库中进行向量检索和召回',
+    params: [],
+    bodyParams: [
+      { name: 'prompt', type: 'string', required: true, description: '查询内容/关键词' },
+      { name: 'top_k', type: 'number', required: true, description: '返回结果数量(1-50)', default: '10' },
+      { name: 'embedding_rate', type: 'number', required: false, description: '语义检索权重(0-1)', default: '1' },
+      { name: 'group_ids', type: 'json', required: false, description: '知识库ID数组', default: '[]' },
+      { name: 'data_ids', type: 'json', required: false, description: '文档ID数组', default: '[]' },
+      { name: 'rerank_version', type: 'string', required: false, description: '重排模型名称' },
+      { name: 'doc_correlation', type: 'number', required: false, description: '相关性得分阈值(0.1-0.95)' },
+    ],
+  },
+  {
+    id: 'retry_embed',
+    name: '重新嵌入文档',
+    method: 'POST',
+    endpoint: '/v1/bot/data/retry/batch',
+    description: '对所有处理失败的文档进行批量重新嵌入',
+    params: [],
+    bodyParams: [],
+  },
+]
+
 export function ApiRequestPage() {
   const [activeCategory, setActiveCategory] = useState<ApiCategory>('conversation')
   const [selectedAgent, setSelectedAgent] = useState<number | null>(null)
@@ -236,6 +440,7 @@ export function ApiRequestPage() {
   const [streamingResponse, setStreamingResponse] = useState<string>('')
   const [lastConversationId, setLastConversationId] = useState<string | null>(null)
   const [isApiListExpanded, setIsApiListExpanded] = useState(true)
+  const [showMoreCategories, setShowMoreCategories] = useState(false)
   const responseRef = useRef<HTMLDivElement>(null)
 
   const { data: agents } = useQuery({
@@ -243,18 +448,26 @@ export function ApiRequestPage() {
     queryFn: agentsApi.getAll,
   })
 
-  const categories = [
+  // Main categories (always visible)
+  const mainCategories = [
     { id: 'conversation' as const, name: '对话请求', icon: ChatBubbleLeftRightIcon, apis: conversationApis },
     { id: 'workflow' as const, name: '工作流请求', icon: CogIcon, apis: workflowApis },
     { id: 'user' as const, name: '用户属性请求', icon: UserIcon, apis: userApis },
   ]
 
-  const currentApis = categories.find((c) => c.id === activeCategory)?.apis || []
+  // Extra categories (collapsed by default)
+  const extraCategories = [
+    { id: 'database' as const, name: '数据库请求', icon: CircleStackIcon, apis: databaseApis },
+    { id: 'knowledge' as const, name: '知识库请求', icon: BookOpenIcon, apis: knowledgeApis },
+  ]
+
+  const allCategories = [...mainCategories, ...extraCategories]
+  const currentApis = allCategories.find((c) => c.id === activeCategory)?.apis || []
   const currentApi = currentApis.find((a) => a.id === selectedApi)
 
   const handleCategoryChange = (category: ApiCategory) => {
     setActiveCategory(category)
-    const apis = categories.find((c) => c.id === category)?.apis || []
+    const apis = allCategories.find((c) => c.id === category)?.apis || []
     if (apis.length > 0) {
       setSelectedApi(apis[0].id)
     }
@@ -314,7 +527,7 @@ export function ApiRequestPage() {
       let body: any = {}
       let queryParams: any = {}
 
-      if (currentApi.method === 'GET') {
+      if (currentApi.method === 'GET' || currentApi.method === 'DELETE') {
         currentApi.params.forEach((param) => {
           if (formValues[param.name] !== undefined && formValues[param.name] !== '') {
             queryParams[param.name] = formValues[param.name]
@@ -323,7 +536,7 @@ export function ApiRequestPage() {
           }
         })
       } else {
-        // Build body for POST requests
+        // Build body for POST/PUT requests
         currentApi.bodyParams?.forEach((param) => {
           const value = formValues[param.name] ?? param.default
           if (value !== undefined && value !== '') {
@@ -335,6 +548,8 @@ export function ApiRequestPage() {
               }
             } else if (param.type === 'number') {
               body[param.name] = Number(value)
+            } else if (param.type === 'boolean') {
+              body[param.name] = value === 'true'
             } else {
               body[param.name] = value
             }
@@ -361,8 +576,8 @@ export function ApiRequestPage() {
         agentId: selectedAgent,
         endpoint: currentApi.endpoint,
         method: currentApi.method,
-        body: currentApi.method === 'POST' ? body : undefined,
-        queryParams: currentApi.method === 'GET' ? queryParams : undefined,
+        body: (currentApi.method === 'POST' || currentApi.method === 'PUT') ? body : undefined,
+        queryParams: (currentApi.method === 'GET' || currentApi.method === 'DELETE') ? queryParams : undefined,
         streaming: isStreaming,
       }
 
@@ -471,6 +686,20 @@ export function ApiRequestPage() {
       )
     }
 
+    if (param.type === 'boolean') {
+      return (
+        <select
+          value={value}
+          onChange={(e) => setFormValues({ ...formValues, [param.name]: e.target.value })}
+          className="input-field"
+        >
+          <option value="">请选择</option>
+          <option value="true">是 (true)</option>
+          <option value="false">否 (false)</option>
+        </select>
+      )
+    }
+
     return (
       <input
         type={param.type === 'number' ? 'number' : 'text'}
@@ -485,6 +714,16 @@ export function ApiRequestPage() {
   // Check if current API uses conversation_id
   const showConversationIdHint = currentApi?.usesConversationId && lastConversationId && !formValues.conversation_id
 
+  const getMethodColor = (method: string) => {
+    switch (method) {
+      case 'GET': return 'bg-green-100 text-green-700'
+      case 'POST': return 'bg-blue-100 text-blue-700'
+      case 'PUT': return 'bg-yellow-100 text-yellow-700'
+      case 'DELETE': return 'bg-red-100 text-red-700'
+      default: return 'bg-gray-100 text-gray-700'
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -495,12 +734,46 @@ export function ApiRequestPage() {
 
       {/* Category Tabs */}
       <div className="glass-card p-2">
-        <div className="flex space-x-2">
-          {categories.map((category) => (
+        <div className="flex flex-wrap gap-2">
+          {/* Main Categories */}
+          {mainCategories.map((category) => (
             <button
               key={category.id}
               onClick={() => handleCategoryChange(category.id)}
-              className={`flex-1 flex items-center justify-center space-x-2 px-4 py-3 rounded-lg transition-all duration-200 ${
+              className={`flex items-center space-x-2 px-4 py-3 rounded-lg transition-all duration-200 ${
+                activeCategory === category.id
+                  ? 'bg-primary-400 text-white shadow-md'
+                  : 'text-text-secondary hover:bg-primary-50 hover:text-primary-600'
+              }`}
+            >
+              <category.icon className="w-5 h-5" />
+              <span className="font-medium">{category.name}</span>
+            </button>
+          ))}
+          
+          {/* Toggle for extra categories */}
+          <button
+            onClick={() => setShowMoreCategories(!showMoreCategories)}
+            className={`flex items-center space-x-2 px-4 py-3 rounded-lg transition-all duration-200 ${
+              showMoreCategories || extraCategories.some(c => c.id === activeCategory)
+                ? 'bg-gray-200 text-gray-700'
+                : 'text-text-tertiary hover:bg-gray-100'
+            }`}
+          >
+            <span className="font-medium">更多</span>
+            {showMoreCategories ? (
+              <ChevronUpIcon className="w-4 h-4" />
+            ) : (
+              <ChevronDownIcon className="w-4 h-4" />
+            )}
+          </button>
+
+          {/* Extra Categories (conditionally shown) */}
+          {(showMoreCategories || extraCategories.some(c => c.id === activeCategory)) && extraCategories.map((category) => (
+            <button
+              key={category.id}
+              onClick={() => handleCategoryChange(category.id)}
+              className={`flex items-center space-x-2 px-4 py-3 rounded-lg transition-all duration-200 ${
                 activeCategory === category.id
                   ? 'bg-primary-400 text-white shadow-md'
                   : 'text-text-secondary hover:bg-primary-50 hover:text-primary-600'
@@ -541,16 +814,10 @@ export function ApiRequestPage() {
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-medium text-text-primary">请求参数</h3>
                 <div className="flex items-center space-x-2">
-                  <span
-                    className={`text-xs font-mono px-2 py-1 rounded ${
-                      currentApi.method === 'GET'
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-blue-100 text-blue-700'
-                    }`}
-                  >
+                  <span className={`text-xs font-mono px-2 py-1 rounded ${getMethodColor(currentApi.method)}`}>
                     {currentApi.method}
                   </span>
-                  <span className="text-xs text-text-tertiary font-mono">{currentApi.endpoint}</span>
+                  <span className="text-xs text-text-tertiary font-mono truncate max-w-[150px]">{currentApi.endpoint}</span>
                 </div>
               </div>
               <div className="space-y-4">
@@ -567,7 +834,7 @@ export function ApiRequestPage() {
                   </motion.button>
                 )}
 
-                {/* Query Parameters (for GET) */}
+                {/* Query Parameters (for GET/DELETE) */}
                 {currentApi.params.map((param) => (
                   <div key={param.name}>
                     <label className="block text-sm font-medium text-text-primary mb-1">
@@ -579,7 +846,7 @@ export function ApiRequestPage() {
                   </div>
                 ))}
 
-                {/* Body Parameters (for POST) */}
+                {/* Body Parameters (for POST/PUT) */}
                 {currentApi.bodyParams?.map((param) => (
                   <div key={param.name}>
                     <label className="block text-sm font-medium text-text-primary mb-1">
@@ -590,6 +857,11 @@ export function ApiRequestPage() {
                     {renderParamInput(param)}
                   </div>
                 ))}
+
+                {/* No params message */}
+                {currentApi.params.length === 0 && (!currentApi.bodyParams || currentApi.bodyParams.length === 0) && (
+                  <p className="text-sm text-text-tertiary text-center py-4">此接口无需参数</p>
+                )}
               </div>
             </div>
           )}
@@ -629,7 +901,7 @@ export function ApiRequestPage() {
               )}
             </button>
             {isApiListExpanded && (
-              <div className="px-4 pb-4 space-y-2">
+              <div className="px-4 pb-4 space-y-2 max-h-[400px] overflow-y-auto">
                 {currentApis.map((api) => (
                   <button
                     key={api.id}
@@ -642,13 +914,7 @@ export function ApiRequestPage() {
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-medium text-text-primary text-sm">{api.name}</span>
-                      <span
-                        className={`text-xs font-mono px-1.5 py-0.5 rounded ${
-                          api.method === 'GET'
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-blue-100 text-blue-700'
-                        }`}
-                      >
+                      <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${getMethodColor(api.method)}`}>
                         {api.method}
                       </span>
                     </div>
@@ -750,6 +1016,32 @@ export function ApiRequestPage() {
                     className="p-2 text-green-500 hover:bg-green-100 rounded-lg transition-colors"
                   >
                     {copiedField === 'msg_id' ? (
+                      <CheckIcon className="w-5 h-5" />
+                    ) : (
+                      <ClipboardDocumentIcon className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Workflow Run ID Quick Copy */}
+            {response?.workflowRunId && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-4"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-purple-700">Workflow Run ID</p>
+                    <p className="text-sm font-mono text-purple-600 mt-1">{response.workflowRunId}</p>
+                  </div>
+                  <button
+                    onClick={() => copyToClipboard(response.workflowRunId, 'workflow_run_id')}
+                    className="p-2 text-purple-500 hover:bg-purple-100 rounded-lg transition-colors"
+                  >
+                    {copiedField === 'workflow_run_id' ? (
                       <CheckIcon className="w-5 h-5" />
                     ) : (
                       <ClipboardDocumentIcon className="w-5 h-5" />
