@@ -61,15 +61,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log('[proxy] Request:', { url, method: method || 'POST', hasBody: !!body });
 
     // Make request to GPTBots API
+    const requestMethod = method || 'POST';
     const requestOptions: RequestInit = {
-      method: method || 'POST',
+      method: requestMethod,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${agent.api_key}`,
       },
     };
 
-    if (body && (method === 'POST' || !method)) {
+    // Add body for POST and PUT requests
+    if (body && (requestMethod === 'POST' || requestMethod === 'PUT')) {
       requestOptions.body = JSON.stringify(body);
     }
 
@@ -111,6 +113,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         console.error('[proxy] Stream error:', streamError);
         res.write(`data: ${JSON.stringify({ error: 'Stream error' })}\n\n`);
         res.end();
+      } finally {
+        try { await pool.end(); } catch (e) { /* ignore */ }
       }
       return;
     }
@@ -138,7 +142,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.error('[proxy] Error:', error);
     return res.status(500).json({
       error: error.message || '服务器错误',
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
     });
+  } finally {
+    try {
+      await pool.end();
+    } catch (e) {
+      // ignore pool end error
+    }
   }
 }
 
