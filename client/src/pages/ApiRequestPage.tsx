@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { agentsApi, type Agent } from '@/lib/api'
-import { motion, AnimatePresence } from 'framer-motion'
+import { agentsApi } from '@/lib/api'
+import { motion } from 'framer-motion'
 import {
   CommandLineIcon,
   ChatBubbleLeftRightIcon,
@@ -9,11 +9,9 @@ import {
   UserIcon,
   ClipboardDocumentIcon,
   CheckIcon,
-  PlayIcon,
   ArrowPathIcon,
   LinkIcon,
   PaperAirplaneIcon,
-  ChevronDownIcon,
 } from '@heroicons/react/24/outline'
 
 type ApiCategory = 'conversation' | 'workflow' | 'user'
@@ -427,7 +425,7 @@ export function ApiRequestPage() {
     }
   }
 
-  const renderParamInput = (param: ParamConfig, isBody: boolean = false) => {
+  const renderParamInput = (param: ParamConfig, _isBody: boolean = false) => {
     const value = formValues[param.name] ?? param.default ?? ''
 
     if (param.type === 'select' && param.options) {
