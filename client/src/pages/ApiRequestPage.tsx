@@ -440,7 +440,6 @@ export function ApiRequestPage() {
   const [streamingResponse, setStreamingResponse] = useState<string>('')
   const [lastConversationId, setLastConversationId] = useState<string | null>(null)
   const [isApiListExpanded, setIsApiListExpanded] = useState(true)
-  const [showMoreCategories, setShowMoreCategories] = useState(false)
   const responseRef = useRef<HTMLDivElement>(null)
 
   const { data: agents } = useQuery({
@@ -448,20 +447,13 @@ export function ApiRequestPage() {
     queryFn: agentsApi.getAll,
   })
 
-  // Main categories (always visible)
-  const mainCategories = [
+  const allCategories = [
     { id: 'conversation' as const, name: '对话请求', icon: ChatBubbleLeftRightIcon, apis: conversationApis },
-    { id: 'workflow' as const, name: '工作流请求', icon: CogIcon, apis: workflowApis },
-    { id: 'user' as const, name: '用户属性请求', icon: UserIcon, apis: userApis },
+    { id: 'workflow' as const, name: '工作流', icon: CogIcon, apis: workflowApis },
+    { id: 'user' as const, name: '用户属性', icon: UserIcon, apis: userApis },
+    { id: 'database' as const, name: '数据库', icon: CircleStackIcon, apis: databaseApis },
+    { id: 'knowledge' as const, name: '知识库', icon: BookOpenIcon, apis: knowledgeApis },
   ]
-
-  // Extra categories (collapsed by default)
-  const extraCategories = [
-    { id: 'database' as const, name: '数据库请求', icon: CircleStackIcon, apis: databaseApis },
-    { id: 'knowledge' as const, name: '知识库请求', icon: BookOpenIcon, apis: knowledgeApis },
-  ]
-
-  const allCategories = [...mainCategories, ...extraCategories]
   const currentApis = allCategories.find((c) => c.id === activeCategory)?.apis || []
   const currentApi = currentApis.find((a) => a.id === selectedApi)
 
@@ -734,53 +726,19 @@ export function ApiRequestPage() {
 
       {/* Category Tabs */}
       <div className="glass-card p-2">
-        <div className="flex flex-wrap gap-2">
-          {/* Main Categories */}
-          {mainCategories.map((category) => (
+        <div className="flex">
+          {allCategories.map((category) => (
             <button
               key={category.id}
               onClick={() => handleCategoryChange(category.id)}
-              className={`flex items-center space-x-2 px-4 py-3 rounded-lg transition-all duration-200 ${
+              className={`flex-1 flex items-center justify-center space-x-2 px-3 py-3 rounded-lg transition-all duration-200 ${
                 activeCategory === category.id
                   ? 'bg-primary-400 text-white shadow-md'
                   : 'text-text-secondary hover:bg-primary-50 hover:text-primary-600'
               }`}
             >
               <category.icon className="w-5 h-5" />
-              <span className="font-medium">{category.name}</span>
-            </button>
-          ))}
-          
-          {/* Toggle for extra categories */}
-          <button
-            onClick={() => setShowMoreCategories(!showMoreCategories)}
-            className={`flex items-center space-x-2 px-4 py-3 rounded-lg transition-all duration-200 ${
-              showMoreCategories || extraCategories.some(c => c.id === activeCategory)
-                ? 'bg-gray-200 text-gray-700'
-                : 'text-text-tertiary hover:bg-gray-100'
-            }`}
-          >
-            <span className="font-medium">更多</span>
-            {showMoreCategories ? (
-              <ChevronUpIcon className="w-4 h-4" />
-            ) : (
-              <ChevronDownIcon className="w-4 h-4" />
-            )}
-          </button>
-
-          {/* Extra Categories (conditionally shown) */}
-          {(showMoreCategories || extraCategories.some(c => c.id === activeCategory)) && extraCategories.map((category) => (
-            <button
-              key={category.id}
-              onClick={() => handleCategoryChange(category.id)}
-              className={`flex items-center space-x-2 px-4 py-3 rounded-lg transition-all duration-200 ${
-                activeCategory === category.id
-                  ? 'bg-primary-400 text-white shadow-md'
-                  : 'text-text-secondary hover:bg-primary-50 hover:text-primary-600'
-              }`}
-            >
-              <category.icon className="w-5 h-5" />
-              <span className="font-medium">{category.name}</span>
+              <span className="font-medium text-sm">{category.name}</span>
             </button>
           ))}
         </div>
