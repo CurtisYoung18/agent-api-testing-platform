@@ -1022,40 +1022,35 @@ export function ApiRequestPage() {
             {/* Full Response - Postman Style */}
             <div
               ref={responseRef}
-              className="flex-1 rounded-lg overflow-hidden"
+              className="flex-1 rounded-lg p-4 min-h-[400px] overflow-auto"
               style={{ backgroundColor: '#1e1e1e' }}
             >
-              <div 
-                className="p-4 min-h-[500px] max-h-[700px] overflow-auto"
-                style={{ backgroundColor: '#1e1e1e' }}
-              >
-                {response ? (
-                  <pre 
-                    className="text-sm font-mono whitespace-pre-wrap break-words"
-                    style={{ color: '#9cdcfe' }}
-                  >
-                    {JSON.stringify(response, null, 2)
-                      .replace(/"([^"]+)":/g, '<key>"$1"</key>:')
-                      .split('\n')
-                      .map((line, i) => {
-                        // Simple syntax highlighting
-                        const highlighted = line
-                          .replace(/<key>"([^"]+)"<\/key>/g, (_, key) => `<span style="color:#9cdcfe">"${key}"</span>`)
-                          .replace(/: "([^"]*)"/g, ': <span style="color:#ce9178">"$1"</span>')
-                          .replace(/: (\d+)/g, ': <span style="color:#b5cea8">$1</span>')
-                          .replace(/: (true|false)/g, ': <span style="color:#569cd6">$1</span>')
-                          .replace(/: (null)/g, ': <span style="color:#569cd6">$1</span>')
-                        return (
-                          <div key={i} dangerouslySetInnerHTML={{ __html: highlighted }} />
-                        )
-                      })}
-                  </pre>
-                ) : (
-                  <div className="flex items-center justify-center h-full" style={{ minHeight: '400px' }}>
-                    <p style={{ color: '#6a6a6a' }}>响应结果将显示在这里</p>
-                  </div>
-                )}
-              </div>
+              {response ? (
+                <pre 
+                  className="text-sm font-mono whitespace-pre-wrap break-words"
+                  style={{ color: '#9cdcfe' }}
+                >
+                  {JSON.stringify(response, null, 2)
+                    .replace(/"([^"]+)":/g, '<key>"$1"</key>:')
+                    .split('\n')
+                    .map((line, i) => {
+                      // Simple syntax highlighting
+                      const highlighted = line
+                        .replace(/<key>"([^"]+)"<\/key>/g, (_, key) => `<span style="color:#9cdcfe">"${key}"</span>`)
+                        .replace(/: "([^"]*)"/g, ': <span style="color:#ce9178">"$1"</span>')
+                        .replace(/: (\d+)/g, ': <span style="color:#b5cea8">$1</span>')
+                        .replace(/: (true|false)/g, ': <span style="color:#569cd6">$1</span>')
+                        .replace(/: (null)/g, ': <span style="color:#569cd6">$1</span>')
+                      return (
+                        <div key={i} dangerouslySetInnerHTML={{ __html: highlighted }} />
+                      )
+                    })}
+                </pre>
+              ) : (
+                <div className="flex items-center justify-center h-full" style={{ minHeight: '350px' }}>
+                  <p style={{ color: '#6a6a6a' }}>响应结果将显示在这里</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
