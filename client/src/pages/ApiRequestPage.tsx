@@ -173,7 +173,7 @@ const workflowApis: ApiEndpoint[] = [
     params: [],
     bodyParams: [
       { name: 'userId', type: 'string', required: false, description: '用户ID（可选）' },
-      { name: 'input', type: 'json', required: true, description: '工作流输入参数(JSON格式)', default: '{}' },
+      { name: 'input', type: 'json', required: true, description: '工作流输入参数 - 请根据具体工作流的"开始"节点入参结构修改', default: '{\n  "data": "{\\"userId\\":\\"szsfpt020251223173845080a5245392\\"}",\n  "type": 200\n}' },
     ],
   },
   {
