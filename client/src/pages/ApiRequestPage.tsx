@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, KeyboardEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { agentsApi } from '@/lib/api'
 import { motion } from 'framer-motion'
@@ -16,9 +16,10 @@ import {
   ChevronUpIcon,
   CircleStackIcon,
   BookOpenIcon,
+  GlobeAltIcon,
 } from '@heroicons/react/24/outline'
 
-type ApiCategory = 'conversation' | 'workflow' | 'user' | 'database' | 'knowledge'
+type ApiCategory = 'conversation' | 'workflow' | 'user' | 'database' | 'knowledge' | 'custom'
 
 interface ApiEndpoint {
   id: string
@@ -442,6 +443,13 @@ export function ApiRequestPage() {
   const [isApiListExpanded, setIsApiListExpanded] = useState(true)
   const responseRef = useRef<HTMLDivElement>(null)
 
+  // Custom API states
+  const [customUrl, setCustomUrl] = useState('')
+  const [customMethod, setCustomMethod] = useState<'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'>('GET')
+  const [customHeaders, setCustomHeaders] = useState('{\n  "Content-Type": "application/json"\n}')
+  const [customBody, setCustomBody] = useState('')
+  const [customQueryParams, setCustomQueryParams] = useState('')
+
   const { data: agents } = useQuery({
     queryKey: ['agents'],
     queryFn: agentsApi.getAll,
@@ -453,6 +461,7 @@ export function ApiRequestPage() {
     { id: 'user' as const, name: '用户属性', icon: UserIcon, apis: userApis },
     { id: 'database' as const, name: '数据库', icon: CircleStackIcon, apis: databaseApis },
     { id: 'knowledge' as const, name: '知识库', icon: BookOpenIcon, apis: knowledgeApis },
+    { id: 'custom' as const, name: '自定义', icon: GlobeAltIcon, apis: [] },
   ]
   const currentApis = allCategories.find((c) => c.id === activeCategory)?.apis || []
   const currentApi = currentApis.find((a) => a.id === selectedApi)
@@ -502,6 +511,11 @@ export function ApiRequestPage() {
   }
 
   const handleSubmit = async () => {
+    // Custom API - doesn't need agent
+    if (activeCategory === 'custom') {
+      return handleCustomSubmit()
+    }
+
     if (!selectedAgent || !currentApi) {
       setError('请先选择Agent')
       return
@@ -646,6 +660,84 @@ export function ApiRequestPage() {
     }
   }
 
+  // Handle custom API submit (uses backend proxy to avoid CORS issues)
+  const handleCustomSubmit = async () => {
+    if (!customUrl) {
+      setError('请输入请求URL')
+      return
+    }
+
+    setIsLoading(true)
+    setError(null)
+    setResponse(null)
+    setStreamingResponse('')
+
+    try {
+      // Build URL with query params
+      let url = customUrl
+      if (customQueryParams.trim()) {
+        try {
+          const params = JSON.parse(customQueryParams)
+          const searchParams = new URLSearchParams()
+          Object.entries(params).forEach(([key, value]) => {
+            searchParams.append(key, String(value))
+          })
+          const separator = url.includes('?') ? '&' : '?'
+          url = `${url}${separator}${searchParams.toString()}`
+        } catch {
+          // Try as key=value format
+          const separator = url.includes('?') ? '&' : '?'
+          url = `${url}${separator}${customQueryParams}`
+        }
+      }
+
+      // Parse headers
+      let headers: Record<string, string> = {}
+      if (customHeaders.trim()) {
+        try {
+          headers = JSON.parse(customHeaders)
+        } catch {
+          setError('Headers JSON 格式错误')
+          return
+        }
+      }
+
+      // Parse body
+      let body: string | undefined
+      if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(customMethod) && customBody.trim()) {
+        body = customBody
+      }
+
+      // Use backend proxy to avoid CORS issues
+      const res = await fetch('/api/custom-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url,
+          method: customMethod,
+          headers,
+          body,
+        }),
+      })
+
+      const responseData = await res.json()
+      setResponse(responseData)
+    } catch (err: any) {
+      setError(err.message || '请求失败')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Handle keyboard events for Shift+Enter in textareas
+  const handleTextareaKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>, callback?: () => void) => {
+    // Allow Shift+Enter for newlines, Enter alone does nothing special
+    if (e.key === 'Enter' && !e.shiftKey && callback) {
+      e.preventDefault()
+      callback()
+    }
+  }
+
   const renderParamInput = (param: ParamConfig) => {
     const value = formValues[param.name] ?? param.default ?? ''
 
@@ -673,7 +765,7 @@ export function ApiRequestPage() {
           onChange={(e) => setFormValues({ ...formValues, [param.name]: e.target.value })}
           className="input-field font-mono text-sm"
           rows={4}
-          placeholder={param.default || '{}'}
+          placeholder={`${param.default || '{}'}\n(Shift+Enter 换行)`}
         />
       )
     }
@@ -689,6 +781,25 @@ export function ApiRequestPage() {
           <option value="true">是 (true)</option>
           <option value="false">否 (false)</option>
         </select>
+      )
+    }
+
+    // Use textarea for string type to support Shift+Enter newlines
+    if (param.type === 'string') {
+      return (
+        <textarea
+          value={value}
+          onChange={(e) => setFormValues({ ...formValues, [param.name]: e.target.value })}
+          className="input-field resize-y min-h-[40px]"
+          rows={1}
+          placeholder={`${param.description} (Shift+Enter 换行)`}
+          style={{ height: 'auto', minHeight: '40px' }}
+          onInput={(e) => {
+            const target = e.target as HTMLTextAreaElement
+            target.style.height = 'auto'
+            target.style.height = `${Math.max(40, target.scrollHeight)}px`
+          }}
+        />
       )
     }
 
@@ -747,27 +858,118 @@ export function ApiRequestPage() {
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Left Panel - API Selection & Parameters */}
         <div className="lg:col-span-2 space-y-4">
-          {/* Agent Selection */}
-          <div className="glass-card p-4">
-            <label className="block text-sm font-medium text-text-primary mb-2">
-              选择 Agent
-            </label>
-            <select
-              value={selectedAgent || ''}
-              onChange={(e) => setSelectedAgent(Number(e.target.value) || null)}
-              className="input-field"
-            >
-              <option value="">请选择Agent</option>
-              {agents?.map((agent) => (
-                <option key={agent.id} value={agent.id}>
-                  {agent.name} ({agent.region})
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Agent Selection - Only for non-custom APIs */}
+          {activeCategory !== 'custom' && (
+            <div className="glass-card p-4">
+              <label className="block text-sm font-medium text-text-primary mb-2">
+                选择 Agent
+              </label>
+              <select
+                value={selectedAgent || ''}
+                onChange={(e) => setSelectedAgent(Number(e.target.value) || null)}
+                className="input-field"
+              >
+                <option value="">请选择Agent</option>
+                {agents?.map((agent) => (
+                  <option key={agent.id} value={agent.id}>
+                    {agent.name} ({agent.region})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
-          {/* Parameters - Moved above API Selection */}
-          {currentApi && (
+          {/* Custom API Form */}
+          {activeCategory === 'custom' && (
+            <div className="glass-card p-4 space-y-4">
+              <div className="flex items-center space-x-2 mb-2">
+                <GlobeAltIcon className="w-5 h-5 text-primary-500" />
+                <h3 className="font-medium text-text-primary">自定义 API 请求</h3>
+              </div>
+              <p className="text-xs text-text-tertiary">
+                可用于测试任何外部接口，无需与 GPTBots 相关
+              </p>
+
+              {/* Method & URL */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-text-primary">
+                  请求方法 & URL <span className="text-red-500">*</span>
+                </label>
+                <div className="flex space-x-2">
+                  <select
+                    value={customMethod}
+                    onChange={(e) => setCustomMethod(e.target.value as any)}
+                    className="input-field w-28"
+                  >
+                    <option value="GET">GET</option>
+                    <option value="POST">POST</option>
+                    <option value="PUT">PUT</option>
+                    <option value="DELETE">DELETE</option>
+                    <option value="PATCH">PATCH</option>
+                  </select>
+                  <textarea
+                    value={customUrl}
+                    onChange={(e) => setCustomUrl(e.target.value)}
+                    className="input-field flex-1 resize-y min-h-[40px]"
+                    placeholder="https://api.example.com/endpoint (Shift+Enter 换行)"
+                    rows={1}
+                    onInput={(e) => {
+                      const target = e.target as HTMLTextAreaElement
+                      target.style.height = 'auto'
+                      target.style.height = `${Math.max(40, target.scrollHeight)}px`
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Query Params */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-text-primary">
+                  Query 参数 <span className="text-text-tertiary text-xs">(可选)</span>
+                </label>
+                <textarea
+                  value={customQueryParams}
+                  onChange={(e) => setCustomQueryParams(e.target.value)}
+                  className="input-field font-mono text-sm"
+                  rows={2}
+                  placeholder={'{"key": "value"} 或 key=value&key2=value2\n(Shift+Enter 换行)'}
+                />
+              </div>
+
+              {/* Headers */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-text-primary">
+                  Headers <span className="text-text-tertiary text-xs">(JSON格式)</span>
+                </label>
+                <textarea
+                  value={customHeaders}
+                  onChange={(e) => setCustomHeaders(e.target.value)}
+                  className="input-field font-mono text-sm"
+                  rows={3}
+                  placeholder={'{\n  "Content-Type": "application/json",\n  "Authorization": "Bearer xxx"\n}'}
+                />
+              </div>
+
+              {/* Body (for POST/PUT/PATCH/DELETE) */}
+              {['POST', 'PUT', 'PATCH', 'DELETE'].includes(customMethod) && (
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-text-primary">
+                    Request Body
+                  </label>
+                  <textarea
+                    value={customBody}
+                    onChange={(e) => setCustomBody(e.target.value)}
+                    className="input-field font-mono text-sm"
+                    rows={6}
+                    placeholder={'{\n  "data": "value"\n}\n(Shift+Enter 换行)'}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Parameters - Moved above API Selection (Only for non-custom) */}
+          {activeCategory !== 'custom' && currentApi && (
             <div className="glass-card p-4">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-medium text-text-primary">请求参数</h3>
@@ -827,7 +1029,7 @@ export function ApiRequestPage() {
           {/* Submit Button */}
           <button
             onClick={handleSubmit}
-            disabled={isLoading || !selectedAgent}
+            disabled={isLoading || (activeCategory !== 'custom' && !selectedAgent)}
             className="w-full btn-primary flex items-center justify-center space-x-2 py-3"
           >
             {isLoading ? (
@@ -843,44 +1045,46 @@ export function ApiRequestPage() {
             )}
           </button>
 
-          {/* API Selection - Collapsible */}
-          <div className="glass-card overflow-hidden">
-            <button
-              onClick={() => setIsApiListExpanded(!isApiListExpanded)}
-              className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
-            >
-              <span className="text-sm font-medium text-text-primary">
-                选择接口 ({currentApis.length})
-              </span>
-              {isApiListExpanded ? (
-                <ChevronUpIcon className="w-5 h-5 text-text-tertiary" />
-              ) : (
-                <ChevronDownIcon className="w-5 h-5 text-text-tertiary" />
+          {/* API Selection - Collapsible (Only for non-custom) */}
+          {activeCategory !== 'custom' && (
+            <div className="glass-card overflow-hidden">
+              <button
+                onClick={() => setIsApiListExpanded(!isApiListExpanded)}
+                className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+              >
+                <span className="text-sm font-medium text-text-primary">
+                  选择接口 ({currentApis.length})
+                </span>
+                {isApiListExpanded ? (
+                  <ChevronUpIcon className="w-5 h-5 text-text-tertiary" />
+                ) : (
+                  <ChevronDownIcon className="w-5 h-5 text-text-tertiary" />
+                )}
+              </button>
+              {isApiListExpanded && (
+                <div className="px-4 pb-4 space-y-2 max-h-[400px] overflow-y-auto">
+                  {currentApis.map((api) => (
+                    <button
+                      key={api.id}
+                      onClick={() => handleApiChange(api.id)}
+                      className={`w-full text-left px-3 py-2 rounded-lg transition-all duration-200 ${
+                        selectedApi === api.id
+                          ? 'bg-primary-100 border-2 border-primary-400'
+                          : 'bg-gray-50 hover:bg-gray-100 border-2 border-transparent'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-text-primary text-sm">{api.name}</span>
+                        <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${getMethodColor(api.method)}`}>
+                          {api.method}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
               )}
-            </button>
-            {isApiListExpanded && (
-              <div className="px-4 pb-4 space-y-2 max-h-[400px] overflow-y-auto">
-                {currentApis.map((api) => (
-                  <button
-                    key={api.id}
-                    onClick={() => handleApiChange(api.id)}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-all duration-200 ${
-                      selectedApi === api.id
-                        ? 'bg-primary-100 border-2 border-primary-400'
-                        : 'bg-gray-50 hover:bg-gray-100 border-2 border-transparent'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium text-text-primary text-sm">{api.name}</span>
-                      <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${getMethodColor(api.method)}`}>
-                        {api.method}
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Right Panel - Response (Larger) */}

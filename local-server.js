@@ -222,6 +222,62 @@ app.post('/api/proxy', async (req, res) => {
   }
 });
 
+// POST /api/custom-proxy - 自定义 API 代理 (解决 CORS 问题)
+app.post('/api/custom-proxy', async (req, res) => {
+  const { url, method, headers, body } = req.body;
+
+  if (!url) {
+    return res.status(400).json({ error: '请提供请求 URL' });
+  }
+
+  console.log('[custom-proxy] Request:', { url, method, hasHeaders: !!headers, hasBody: !!body });
+
+  try {
+    const requestOptions = {
+      method: method || 'GET',
+      headers: headers || {},
+    };
+
+    if (body && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+      requestOptions.body = typeof body === 'string' ? body : JSON.stringify(body);
+    }
+
+    const startTime = Date.now();
+    const response = await fetch(url, requestOptions);
+    const endTime = Date.now();
+
+    // Get response as text first
+    const responseText = await response.text();
+    let responseData;
+
+    // Try to parse as JSON
+    try {
+      responseData = JSON.parse(responseText);
+    } catch {
+      responseData = { _rawText: responseText };
+    }
+
+    console.log('[custom-proxy] Response:', response.status, response.statusText);
+
+    // Return response with metadata
+    return res.status(response.status).json({
+      _meta: {
+        status: response.status,
+        statusText: response.statusText,
+        duration: `${endTime - startTime}ms`,
+        headers: Object.fromEntries(response.headers.entries()),
+      },
+      ...responseData,
+    });
+  } catch (error) {
+    console.error('[custom-proxy] Error:', error.message);
+    return res.status(500).json({
+      error: error.message || '请求失败',
+      _meta: { status: 500, statusText: 'Proxy Error' },
+    });
+  }
+});
+
 // Test storage
 const testResults = new Map();
 let testIdCounter = 1;
