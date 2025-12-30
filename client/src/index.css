@@ -39,6 +39,14 @@
   /* Input styles */
   .input-field {
     @apply w-full px-4 py-2 border border-primary-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all duration-200 bg-white/80;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  /* Ensure textarea is fully selectable */
+  textarea.input-field {
+    user-select: text;
+    -webkit-user-select: text;
   }
 
   /* Badge styles */

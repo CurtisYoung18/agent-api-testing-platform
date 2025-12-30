@@ -1,4 +1,4 @@
-import { useState, useRef, KeyboardEvent } from 'react'
+import { useState, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { agentsApi } from '@/lib/api'
 import { motion } from 'framer-motion'
@@ -729,14 +729,6 @@ export function ApiRequestPage() {
     }
   }
 
-  // Handle keyboard events for Shift+Enter in textareas
-  const handleTextareaKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>, callback?: () => void) => {
-    // Allow Shift+Enter for newlines, Enter alone does nothing special
-    if (e.key === 'Enter' && !e.shiftKey && callback) {
-      e.preventDefault()
-      callback()
-    }
-  }
 
   const renderParamInput = (param: ParamConfig) => {
     const value = formValues[param.name] ?? param.default ?? ''
