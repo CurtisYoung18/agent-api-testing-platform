@@ -720,7 +720,19 @@ export function ApiRequestPage() {
         }),
       })
 
-      const responseData = await res.json()
+      const responseText = await res.text()
+      let responseData: any
+      
+      try {
+        responseData = JSON.parse(responseText)
+      } catch {
+        // If not JSON, show raw response
+        responseData = {
+          _meta: { status: res.status, statusText: res.statusText },
+          _rawResponse: responseText.substring(0, 5000) + (responseText.length > 5000 ? '\n...(truncated)' : ''),
+        }
+      }
+      
       setResponse(responseData)
     } catch (err: any) {
       setError(err.message || '请求失败')
