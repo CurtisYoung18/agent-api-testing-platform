@@ -449,6 +449,88 @@ export function ApiRequestPage() {
   const [customHeaders, setCustomHeaders] = useState('{\n  "Content-Type": "application/json"\n}')
   const [customBody, setCustomBody] = useState('')
   const [customQueryParams, setCustomQueryParams] = useState('')
+  const [curlInput, setCurlInput] = useState('')
+  const [showCurlInput, setShowCurlInput] = useState(true)
+
+  // Parse curl command
+  const parseCurlCommand = (curl: string) => {
+    try {
+      // Normalize: remove line breaks with backslash continuation
+      const normalized = curl.replace(/\\\s*\n\s*/g, ' ').replace(/\n/g, ' ').trim()
+      
+      // Extract method (-X or --request)
+      const methodMatch = normalized.match(/-X\s+['"]?(\w+)['"]?/i) || normalized.match(/--request\s+['"]?(\w+)['"]?/i)
+      const method = methodMatch ? methodMatch[1].toUpperCase() : 'GET'
+      
+      // Extract URL (first URL-like string after 'curl' or quoted string)
+      let url = ''
+      const urlPatterns = [
+        /curl[^'"]*['"]([^'"]+)['"]/i,  // curl 'url' or curl "url"
+        /curl\s+(?:-[^\s]+\s+)*['"]?([^\s'"]+)/i,  // curl -X POST url
+        /'(https?:\/\/[^']+)'/,  // 'http://...'
+        /"(https?:\/\/[^"]+)"/,  // "http://..."
+        /(https?:\/\/[^\s'"\\]+)/,  // http://... (unquoted)
+      ]
+      
+      for (const pattern of urlPatterns) {
+        const match = normalized.match(pattern)
+        if (match && match[1] && match[1].startsWith('http')) {
+          url = match[1]
+          break
+        }
+      }
+      
+      // Extract headers (-H or --header)
+      const headers: Record<string, string> = {}
+      const headerRegex = /(?:-H|--header)\s+['"]([^'"]+)['"]/gi
+      let headerMatch
+      while ((headerMatch = headerRegex.exec(normalized)) !== null) {
+        const headerValue = headerMatch[1]
+        const colonIndex = headerValue.indexOf(':')
+        if (colonIndex > 0) {
+          const key = headerValue.substring(0, colonIndex).trim()
+          const value = headerValue.substring(colonIndex + 1).trim()
+          headers[key] = value
+        }
+      }
+      
+      // Extract body (-d or --data or --data-raw)
+      let body = ''
+      const bodyMatch = normalized.match(/(?:-d|--data|--data-raw)\s+'([^']*)'/) || 
+                       normalized.match(/(?:-d|--data|--data-raw)\s+"([^"]*)"/)
+      if (bodyMatch) {
+        body = bodyMatch[1]
+        // Try to format JSON
+        try {
+          body = JSON.stringify(JSON.parse(body), null, 2)
+        } catch {
+          // Keep original if not valid JSON
+        }
+      }
+      
+      // Update state
+      if (url) {
+        setCustomUrl(url)
+      }
+      if (method && ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+        setCustomMethod(method as any)
+      }
+      if (Object.keys(headers).length > 0) {
+        setCustomHeaders(JSON.stringify(headers, null, 2))
+      }
+      if (body) {
+        setCustomBody(body)
+      }
+      
+      // Collapse curl input after parsing
+      setShowCurlInput(false)
+      
+      return true
+    } catch (err) {
+      console.error('Failed to parse curl:', err)
+      return false
+    }
+  }
 
   const { data: agents } = useQuery({
     queryKey: ['agents'],
@@ -886,12 +968,57 @@ export function ApiRequestPage() {
           {/* Custom API Form */}
           {activeCategory === 'custom' && (
             <div className="glass-card p-4 space-y-4">
-              <div className="flex items-center space-x-2 mb-2">
-                <GlobeAltIcon className="w-5 h-5 text-primary-500" />
-                <h3 className="font-medium text-text-primary">自定义 API 请求</h3>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center space-x-2">
+                  <GlobeAltIcon className="w-5 h-5 text-primary-500" />
+                  <h3 className="font-medium text-text-primary">自定义 API 请求</h3>
+                </div>
+                <button
+                  onClick={() => setShowCurlInput(!showCurlInput)}
+                  className="text-xs text-primary-500 hover:text-primary-600 flex items-center space-x-1"
+                >
+                  <CommandLineIcon className="w-4 h-4" />
+                  <span>{showCurlInput ? '收起 curl' : '粘贴 curl'}</span>
+                </button>
               </div>
+              
+              {/* Curl Input */}
+              {showCurlInput && (
+                <div className="space-y-2 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                  <label className="block text-sm font-medium text-text-primary">
+                    粘贴 curl 命令
+                  </label>
+                  <textarea
+                    value={curlInput}
+                    onChange={(e) => setCurlInput(e.target.value)}
+                    className="input-field font-mono text-xs"
+                    rows={6}
+                    placeholder={`curl -X POST 'http://example.com/api' \\
+-H 'Authorization: Bearer xxx' \\
+-H 'Content-Type: application/json' \\
+-d '{
+    "user_id": "123"
+}'`}
+                  />
+                  <button
+                    onClick={() => {
+                      if (parseCurlCommand(curlInput)) {
+                        setCurlInput('')
+                      } else {
+                        setError('curl 命令解析失败，请检查格式')
+                      }
+                    }}
+                    disabled={!curlInput.trim()}
+                    className="w-full py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center justify-center space-x-2"
+                  >
+                    <CommandLineIcon className="w-4 h-4" />
+                    <span>解析 curl 并填充</span>
+                  </button>
+                </div>
+              )}
+              
               <p className="text-xs text-text-tertiary">
-                可用于测试任何外部接口，无需与 GPTBots 相关
+                可用于测试任何外部接口，无需与 GPTBots 相关。支持直接粘贴 curl 命令。
               </p>
 
               {/* Method & URL */}
