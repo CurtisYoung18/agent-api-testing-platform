@@ -978,12 +978,11 @@ export function TestPage() {
                             className="input-field w-24"
                             placeholder="数量"
                             min={1}
-                            max={50}
                             value={customConcurrency}
                             onChange={(e) => {
                               setCustomConcurrency(e.target.value)
                               const val = parseInt(e.target.value)
-                              if (val > 0 && val <= 50) {
+                              if (val > 0) {
                                 setMaxConcurrency(val)
                               }
                             }}
