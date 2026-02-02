@@ -399,10 +399,12 @@ export function ComparePage() {
                 ))}
               </tr>
               <tr>
-                <td className="py-3 px-4 text-text-secondary">RPM</td>
+                <td className="py-3 px-4 text-text-secondary">并发/间隔</td>
                 {histories.map((h, i) => (
                   <td key={i} className="py-3 px-4 text-text-primary">
-                    {h.rpm || 'N/A'}
+                    {h.executionMode === 'parallel' 
+                      ? `${h.maxConcurrency || 2} 并发`
+                      : `${(h.requestDelay || 0) / 1000}s 间隔`}
                   </td>
                 ))}
               </tr>

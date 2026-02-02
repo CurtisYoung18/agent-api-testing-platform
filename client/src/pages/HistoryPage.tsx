@@ -491,8 +491,14 @@ export function HistoryPage() {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-text-secondary">速率限制:</span>
-                  <span className="font-medium text-text-primary">{selectedRecord.rpm} RPM</span>
+                  <span className="text-text-secondary">
+                    {selectedRecord.executionMode === 'parallel' ? '并发数:' : '请求间隔:'}
+                  </span>
+                  <span className="font-medium text-text-primary">
+                    {selectedRecord.executionMode === 'parallel' 
+                      ? `${selectedRecord.maxConcurrency || 2} 个/批`
+                      : `${(selectedRecord.requestDelay || 0) / 1000} 秒`}
+                  </span>
                 </div>
               </div>
 
