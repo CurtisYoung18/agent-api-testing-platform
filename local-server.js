@@ -346,7 +346,15 @@ function generateMarkdownReport(data) {
   markdown += `**Agent名称**: ${data.agentName}\n`;
   markdown += `**测试时间**: ${data.testDate}\n`;
   markdown += `**执行模式**: ${data.executionMode === 'parallel' ? '并行' : '串行'}\n`;
-  markdown += `**RPM**: ${data.rpm}\n\n`;
+  if (data.executionMode === 'parallel') {
+    markdown += `**并发数**: ${data.maxConcurrency || 2}\n`;
+  } else {
+    markdown += `**请求间隔**: ${data.requestDelay || 0}ms\n`;
+  }
+  if (data.retriedCount > 0) {
+    markdown += `**重试问题数**: ${data.retriedCount}\n`;
+  }
+  markdown += `\n`;
 
   markdown += `## 测试汇总\n\n`;
   markdown += `| 指标 | 值 |\n`;
@@ -358,17 +366,22 @@ function generateMarkdownReport(data) {
   markdown += `| 平均响应时间 | ${data.avgResponseTime}ms |\n`;
   markdown += `| 总耗时 | ${data.durationSeconds}s |\n`;
   markdown += `| Token消耗 | ${data.totalTokens || 0} |\n`;
-  markdown += `| 总成本 | $${(data.totalCost || 0).toFixed(4)} |\n\n`;
+  markdown += `| 总成本 | $${(data.totalCost || 0).toFixed(4)} |\n`;
+  if (data.retriedCount > 0) {
+    markdown += `| 重试成功数 | ${data.retriedCount} |\n`;
+  }
+  markdown += `\n`;
 
   markdown += `## 详细结果\n\n`;
   data.results.forEach((r, index) => {
-    markdown += `### 问题 ${index + 1}\n\n`;
+    const retryBadge = r.retryCount > 0 ? ` 🔄 (重试${r.retryCount}次后成功)` : '';
+    markdown += `### 问题 ${index + 1}${retryBadge}\n\n`;
     markdown += `**问题**: ${r.question}\n\n`;
     if (r.referenceOutput) {
       markdown += `**参考答案**: ${r.referenceOutput}\n\n`;
     }
     markdown += `**实际输出**: ${r.response || r.error}\n\n`;
-    markdown += `**状态**: ${r.success ? '✅ 成功' : '❌ 失败'}\n\n`;
+    markdown += `**状态**: ${r.success ? '✅ 成功' : '❌ 失败'}${retryBadge}\n\n`;
     markdown += `**响应时间**: ${r.responseTime}ms\n\n`;
     if (r.tokens) {
       markdown += `**Token消耗**: ${r.tokens}\n\n`;
@@ -387,6 +400,7 @@ function generateExcelReport(data) {
     '参考答案': r.referenceOutput || '',
     '实际输出': r.response || r.error,
     '状态': r.success ? '成功' : '失败',
+    '重试次数': r.retryCount || 0,
     '响应时间(ms)': r.responseTime,
     'Token消耗': r.tokens || 0,
     '成本': r.cost || 0,
@@ -575,8 +589,9 @@ async function callAgentAPI(apiKey, region, question, customBaseUrl, customUserI
 app.post('/api/tests', upload.single('file'), async (req, res) => {
   try {
     const file = req.file;
-    const { agentId, executionMode, userId, maxConcurrency, requestDelay } = req.body;
+    const { agentId, executionMode, userId, maxConcurrency, requestDelay, requestTimeout } = req.body;
     const wantsStream = req.query.stream === 'true';
+    const timeoutMs = parseInt(requestTimeout) || 60000;
 
     console.log('[tests] Request:', { 
       agentId, 
@@ -584,6 +599,7 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
       ...(executionMode === 'parallel' 
         ? { maxConcurrency: maxConcurrency || 2 } 
         : { requestDelay: `${requestDelay || 0}ms` }),
+      timeout: `${timeoutMs / 1000}s`,
       userId: userId || '(auto)', 
       wantsStream, 
       hasFile: !!file 
@@ -639,7 +655,8 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
           agent.region,
           question,
           agent.custom_base_url,
-          userId
+          userId,
+          timeoutMs
         );
 
         // Extract token/cost info
@@ -747,7 +764,33 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
       const avgResponseTime = Math.round(results.reduce((sum, r) => sum + (r.responseTime || 0), 0) / results.length);
       const successRate = (passedCount / results.length * 100).toFixed(2);
 
-      // Save to history
+      // If there are failures, don't save yet - wait for user to retry or confirm
+      if (failedCount > 0) {
+        console.log(`[tests] Test completed with ${failedCount} failures, waiting for retry or confirm`);
+        res.write(`data: ${JSON.stringify({ 
+          type: 'complete', 
+          pendingSave: true,
+          failedCount,
+          passedCount,
+          successRate,
+          durationSeconds,
+          avgResponseTime,
+          totalTokens,
+          totalCost,
+          results,
+          testConfig: {
+            agentId: parseInt(agentId),
+            agentName: agent.name,
+            executionMode: executionMode || 'sequential',
+            maxConcurrency: parseInt(maxConcurrency) || 2,
+            requestDelay: parseInt(requestDelay) || 0,
+          }
+        })}\n\n`);
+        res.end();
+        return;
+      }
+
+      // All passed - save to history immediately
       const historyEntry = saveTestToHistory({
         agentId: parseInt(agentId),
         agentName: agent.name,
@@ -807,6 +850,7 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
       executionMode: executionMode || 'sequential',
       maxConcurrency: parseInt(maxConcurrency) || 2,
       requestDelay: parseInt(requestDelay) || 0,
+      requestTimeout: timeoutMs,
       userId: userId || null,
     };
 
@@ -822,10 +866,206 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
   }
 });
 
+// POST /api/tests/save - 保存测试结果到历史记录（用于有失败后确认保存）
+app.post('/api/tests/save', express.json(), async (req, res) => {
+  try {
+    const { results, testConfig, durationSeconds, totalTokens, totalCost } = req.body;
+
+    if (!results || !testConfig) {
+      return res.status(400).json({ error: '缺少必要参数' });
+    }
+
+    const passedCount = results.filter(r => r.success).length;
+    const failedCount = results.length - passedCount;
+    const avgResponseTime = Math.round(results.reduce((sum, r) => sum + (r.responseTime || 0), 0) / results.length);
+    const successRate = (passedCount / results.length * 100).toFixed(2);
+
+    // Count retried questions
+    const retriedCount = results.filter(r => r.retryCount && r.retryCount > 0).length;
+
+    // Save to history
+    const historyEntry = saveTestToHistory({
+      agentId: testConfig.agentId,
+      agentName: testConfig.agentName,
+      totalQuestions: results.length,
+      passedCount,
+      failedCount,
+      successRate,
+      durationSeconds: durationSeconds || 0,
+      avgResponseTime,
+      executionMode: testConfig.executionMode || 'sequential',
+      maxConcurrency: testConfig.maxConcurrency || 2,
+      requestDelay: testConfig.requestDelay || 0,
+      rpm: 0,
+      totalTokens: totalTokens || 0,
+      totalCost: totalCost || 0,
+      testDate: new Date().toISOString(),
+      results: results.map(r => ({
+        ...r,
+        retryCount: r.retryCount || 0,
+      })),
+      retriedCount,
+    });
+
+    // Auto-save reports to local directory
+    const outputDir = './test_output';
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
+    
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const mdPath = `${outputDir}/test_report_${timestamp}.md`;
+    const xlsxPath = `${outputDir}/test_report_${timestamp}.xlsx`;
+    
+    fs.writeFileSync(mdPath, historyEntry.markdownReport);
+    fs.writeFileSync(xlsxPath, historyEntry.excelReport);
+    
+    console.log(`\n📁 报告已自动保存到:`);
+    console.log(`   - Markdown: ${mdPath}`);
+    console.log(`   - Excel: ${xlsxPath}`);
+
+    console.log(`[save] Saved test with ${results.length} results (${retriedCount} retried), history #${historyEntry.id}`);
+
+    res.json({ 
+      success: true, 
+      historyId: historyEntry.id,
+      retriedCount,
+    });
+  } catch (error) {
+    console.error('[save] Error:', error);
+    res.status(500).json({ error: error.message || '服务器错误' });
+  }
+});
+
+// POST /api/tests/retry - 重试失败的测试问题 (支持 SSE 流式)
+app.post('/api/tests/retry', express.json(), async (req, res) => {
+  try {
+    const { agentId, questions, executionMode, requestTimeout, maxConcurrency, requestDelay, userId } = req.body;
+    const wantsStream = req.query.stream === 'true';
+    const timeoutMs = parseInt(requestTimeout) || 60000;
+
+    console.log('[retry] Request:', { 
+      agentId, 
+      questionsCount: questions?.length,
+      executionMode,
+      timeout: `${timeoutMs / 1000}s`,
+    });
+
+    if (!questions || questions.length === 0 || !agentId) {
+      return res.status(400).json({ error: '缺少必要参数' });
+    }
+
+    const agent = agents.find(a => a.id === parseInt(agentId));
+    if (!agent) {
+      return res.status(404).json({ error: 'Agent 不存在' });
+    }
+
+    // Set up SSE
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+
+    res.write(`data: ${JSON.stringify({ type: 'connected', totalQuestions: questions.length })}\n\n`);
+
+    const isParallel = executionMode === 'parallel';
+    const results = [];
+
+    // Helper function to process a single question
+    const processQuestion = async (q) => {
+      console.log(`[retry] Running question ${q.questionIndex + 1}: ${q.question.slice(0, 50)}...`);
+
+      const result = await callAgentAPI(
+        agent.api_key,
+        agent.region,
+        q.question,
+        agent.custom_base_url,
+        userId,
+        timeoutMs
+      );
+
+      return {
+        type: 'result',
+        questionIndex: q.questionIndex,
+        question: q.question,
+        referenceOutput: q.referenceOutput || '',
+        response: result.response || '',
+        success: result.success,
+        error: result.error,
+        responseTime: result.responseTime,
+        conversationId: result.conversationId,
+        messageId: result.messageId,
+        isRetry: true,
+        timestamp: new Date().toISOString(),
+      };
+    };
+
+    if (isParallel) {
+      const concurrency = parseInt(maxConcurrency) || 2;
+      console.log(`[retry] Parallel mode: concurrency=${concurrency}`);
+
+      for (let batchStart = 0; batchStart < questions.length; batchStart += concurrency) {
+        const batch = questions.slice(batchStart, batchStart + concurrency);
+
+        res.write(`data: ${JSON.stringify({ 
+          type: 'progress', 
+          current: batchStart + 1,
+          message: `重试 ${batch.length} 个问题...`
+        })}\n\n`);
+
+        const batchResults = await Promise.all(batch.map(q => processQuestion(q)));
+
+        for (const resultData of batchResults) {
+          results.push(resultData);
+          res.write(`data: ${JSON.stringify(resultData)}\n\n`);
+        }
+
+        if (batchStart + concurrency < questions.length) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+    } else {
+      const delay = parseInt(requestDelay) || 0;
+      console.log(`[retry] Sequential mode: delay=${delay}ms`);
+
+      for (let i = 0; i < questions.length; i++) {
+        res.write(`data: ${JSON.stringify({ 
+          type: 'progress', 
+          current: i + 1, 
+          question: questions[i].question.slice(0, 100) 
+        })}\n\n`);
+
+        const resultData = await processQuestion(questions[i]);
+        results.push(resultData);
+        res.write(`data: ${JSON.stringify(resultData)}\n\n`);
+
+        if (i < questions.length - 1 && delay > 0) {
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+
+    // Send complete event
+    res.write(`data: ${JSON.stringify({ type: 'complete', retriedCount: results.length })}\n\n`);
+    res.end();
+
+    console.log(`[retry] Completed with ${results.length} results`);
+  } catch (error) {
+    console.error('[retry] Error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message || '服务器错误' });
+    } else {
+      res.write(`data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`);
+      res.end();
+    }
+  }
+});
+
 // Run test async
 async function runTest(testData, agent) {
-  const { questions, referenceOutputs, userId, executionMode, maxConcurrency, requestDelay } = testData;
+  const { questions, referenceOutputs, userId, executionMode, maxConcurrency, requestDelay, requestTimeout } = testData;
   const isParallel = executionMode === 'parallel';
+  const timeoutMs = requestTimeout || 60000;
 
   // Helper function to process a single question
   const processQuestion = async (i) => {
@@ -839,7 +1079,8 @@ async function runTest(testData, agent) {
       agent.region,
       question,
       agent.custom_base_url,
-      userId
+      userId,
+      timeoutMs
     );
 
     return {

@@ -20,6 +20,8 @@ import {
   InformationCircleIcon,
   EyeIcon,
   TrashIcon,
+  ExclamationTriangleIcon,
+  ArrowPathIcon,
 } from '@heroicons/react/24/outline'
 import { api } from '../lib/api'
 
@@ -42,6 +44,7 @@ export function TestPage() {
   const [executionMode, setExecutionMode] = useState<'parallel' | 'sequential'>('parallel')
   const [maxConcurrency, setMaxConcurrency] = useState(2) // 并行模式：最大并发数
   const [requestDelay, setRequestDelay] = useState(0) // 串行模式：请求间隔（毫秒）
+  const [requestTimeout, setRequestTimeout] = useState(60000) // 请求超时时间（毫秒）
   const [customUserId, setCustomUserId] = useState('')
   const [testError, setTestError] = useState('')
   // Real-time testing states
@@ -49,6 +52,12 @@ export function TestPage() {
   const [testCompleted, setTestCompleted] = useState(false)
   const [liveResults, setLiveResults] = useState<any[]>([])
   const [liveStats, setLiveStats] = useState({ current: 0, total: 0, passedCount: 0, failedCount: 0, successRate: '0.00' })
+  // Retry failed tests
+  const [isRetrying, setIsRetrying] = useState(false)
+  const [retryAttempts, setRetryAttempts] = useState<Map<number, number>>(new Map()) // questionIndex -> retry count
+  // Pending save (when test has failures)
+  const [pendingSaveData, setPendingSaveData] = useState<any>(null)
+  const [isSaving, setIsSaving] = useState(false)
   const [currentQuestion, setCurrentQuestion] = useState('')
   const [currentResponse, setCurrentResponse] = useState('')
   const [previewQuestions, setPreviewQuestions] = useState<string[]>([])
@@ -167,6 +176,7 @@ export function TestPage() {
     formData.append('agentId', selectedAgent.id.toString())
     formData.append('file', uploadedFile)
     formData.append('executionMode', executionMode)
+    formData.append('requestTimeout', requestTimeout.toString())
     if (executionMode === 'parallel') {
       formData.append('maxConcurrency', maxConcurrency.toString())
     } else {
@@ -235,13 +245,34 @@ export function TestPage() {
                   return newResults
                 })
               } else if (data.type === 'complete') {
-                // Mark test as completed and navigate after a brief moment
+                // Mark test as completed
                 setTestCompleted(true)
                 setCurrentQuestion('')
-                setCurrentResponse('✅ 测试已完成！正在跳转到历史记录...')
-                setTimeout(() => {
-                  navigate('/history', { state: { refresh: true } })
-                }, 1500)
+                
+                if (data.pendingSave) {
+                  // Has failures - save data for later, show retry option
+                  setPendingSaveData({
+                    results: data.results,
+                    testConfig: data.testConfig,
+                    durationSeconds: data.durationSeconds,
+                    totalTokens: data.totalTokens,
+                    totalCost: data.totalCost,
+                  })
+                  setLiveResults(data.results)
+                  setLiveStats(prev => ({
+                    ...prev,
+                    passedCount: data.passedCount,
+                    failedCount: data.failedCount,
+                    successRate: data.successRate,
+                  }))
+                  setCurrentResponse(`⚠️ 测试完成，但有 ${data.failedCount} 个问题失败。您可以选择重试失败的问题。`)
+                } else {
+                  // All passed - already saved, navigate to history
+                  setCurrentResponse('✅ 测试已完成！正在跳转到历史记录...')
+                  setTimeout(() => {
+                    navigate('/history', { state: { refresh: true } })
+                  }, 1500)
+                }
               }
             } catch (err) {
               console.error('Failed to parse SSE data:', err)
@@ -254,6 +285,187 @@ export function TestPage() {
       setTestError(error.message || '测试执行失败，请重试')
       setIsTestingLive(false)
       setTestCompleted(false)
+    }
+  }
+
+  // Handle retry of failed tests
+  const handleRetryFailed = async () => {
+    if (!selectedAgent) return
+
+    // Get failed questions with their original indices
+    const failedQuestions = liveResults
+      .filter(r => !r.success)
+      .map(r => ({
+        questionIndex: r.questionIndex,
+        question: r.question,
+        referenceOutput: r.referenceOutput || '',
+      }))
+
+    if (failedQuestions.length === 0) return
+
+    setIsRetrying(true)
+    setTestCompleted(false)
+    setCurrentQuestion('')
+    setCurrentResponse('正在重试失败的问题...')
+
+    try {
+      const response = await fetch('/api/tests/retry?stream=true', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          agentId: selectedAgent.id,
+          questions: failedQuestions,
+          executionMode,
+          requestTimeout,
+          maxConcurrency,
+          requestDelay,
+          userId: customUserId.trim() || undefined,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('重试请求失败')
+      }
+
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+
+      if (!reader) {
+        throw new Error('无法读取响应流')
+      }
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const text = decoder.decode(value)
+        const lines = text.split('\n')
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.substring(6))
+              
+              if (data.type === 'progress') {
+                setCurrentQuestion(data.question)
+                setCurrentResponse('正在等待AI回复...')
+              } else if (data.type === 'result') {
+                setCurrentResponse(data.response || data.error)
+                
+                // Update the original result at the correct index
+                setLiveResults(prevResults => {
+                  const newResults = [...prevResults]
+                  const originalIndex = data.questionIndex
+                  const existingIndex = newResults.findIndex(r => r.questionIndex === originalIndex)
+                  
+                  if (existingIndex !== -1) {
+                    // Track retry attempts
+                    const currentAttempts = retryAttempts.get(originalIndex) || 0
+                    setRetryAttempts(prev => new Map(prev).set(originalIndex, currentAttempts + 1))
+                    
+                    // Update result with retry info
+                    newResults[existingIndex] = {
+                      ...data,
+                      retryCount: currentAttempts + 1,
+                    }
+                  }
+                  
+                  // Recalculate stats
+                  const passedCount = newResults.filter(r => r.success).length
+                  const failedCount = newResults.length - passedCount
+                  const successRate = newResults.length > 0 ? ((passedCount / newResults.length) * 100).toFixed(2) : '0.00'
+                  setLiveStats(prev => ({ 
+                    ...prev, 
+                    passedCount, 
+                    failedCount, 
+                    successRate 
+                  }))
+                  
+                  return newResults
+                })
+              } else if (data.type === 'complete') {
+                setTestCompleted(true)
+                setCurrentQuestion('')
+                
+                // Check remaining failures and update stats
+                setLiveResults(prevResults => {
+                  const passedCount = prevResults.filter(r => r.success).length
+                  const remainingFailed = prevResults.length - passedCount
+                  const successRate = prevResults.length > 0 ? ((passedCount / prevResults.length) * 100).toFixed(2) : '0.00'
+                  
+                  setLiveStats(prev => ({
+                    ...prev,
+                    passedCount,
+                    failedCount: remainingFailed,
+                    successRate,
+                  }))
+                  
+                  if (remainingFailed > 0) {
+                    setCurrentResponse(`⚠️ 重试完成，仍有 ${remainingFailed} 个问题失败。您可以继续重试或保存结果。`)
+                  } else {
+                    setCurrentResponse('✅ 所有问题已成功！点击下方按钮保存结果。')
+                  }
+                  return prevResults
+                })
+              }
+            } catch (err) {
+              console.error('Failed to parse retry SSE data:', err)
+            }
+          }
+        }
+      }
+    } catch (error: any) {
+      console.error('Retry execution error:', error)
+      setTestError(error.message || '重试执行失败')
+    } finally {
+      setIsRetrying(false)
+    }
+  }
+
+  // Save results and navigate to history
+  const handleSaveAndNavigate = async () => {
+    if (!pendingSaveData) {
+      navigate('/history', { state: { refresh: true } })
+      return
+    }
+
+    setIsSaving(true)
+    try {
+      // Add retry count info to results
+      const resultsWithRetryInfo = liveResults.map(r => ({
+        ...r,
+        retryCount: retryAttempts.get(r.questionIndex) || 0,
+      }))
+
+      const response = await fetch('/api/tests/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          results: resultsWithRetryInfo,
+          testConfig: pendingSaveData.testConfig,
+          durationSeconds: pendingSaveData.durationSeconds,
+          totalTokens: pendingSaveData.totalTokens,
+          totalCost: pendingSaveData.totalCost,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('保存失败')
+      }
+
+      const data = await response.json()
+      console.log('Saved test results, history ID:', data.historyId)
+      
+      navigate('/history', { state: { refresh: true } })
+    } catch (error: any) {
+      console.error('Save error:', error)
+      setTestError(error.message || '保存失败')
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -698,6 +910,27 @@ export function TestPage() {
                     </div>
                   )}
 
+                  {/* Request Timeout */}
+                  <div>
+                    <label className="block text-sm font-medium text-text-primary mb-3">
+                      请求超时时间
+                    </label>
+                    <select
+                      className="input-field"
+                      value={requestTimeout}
+                      onChange={(e) => setRequestTimeout(Number(e.target.value))}
+                    >
+                      <option value={30000}>30 秒</option>
+                      <option value={60000}>60 秒 (默认)</option>
+                      <option value={120000}>2 分钟</option>
+                      <option value={180000}>3 分钟</option>
+                      <option value={300000}>5 分钟</option>
+                    </select>
+                    <p className="text-xs text-text-tertiary mt-2">
+                      单个问题等待 AI 回答的最长时间，超时则标记为失败
+                    </p>
+                  </div>
+
                   {/* Custom User ID */}
                   <div>
                     <label className="block text-sm font-medium text-text-primary mb-3">
@@ -735,6 +968,9 @@ export function TestPage() {
                     )}
                   </p>
                   <p className="text-sm text-text-secondary">
+                    <span className="font-medium">超时时间:</span> {requestTimeout / 1000} 秒
+                  </p>
+                  <p className="text-sm text-text-secondary">
                     <span className="font-medium">会话用户ID:</span> {customUserId || '自动生成'}
                   </p>
                 </div>
@@ -756,10 +992,22 @@ export function TestPage() {
                             transition={{ type: "spring", duration: 0.5 }}
                             className="w-16 h-16 mx-auto mb-4"
                           >
-                            <CheckCircleIcon className="w-full h-full text-green-500" />
+                            {liveStats.failedCount > 0 ? (
+                              <ExclamationTriangleIcon className="w-full h-full text-yellow-500" />
+                            ) : (
+                              <CheckCircleIcon className="w-full h-full text-green-500" />
+                            )}
                           </motion.div>
-                          <h2 className="text-2xl font-bold text-text-primary mb-2">测试完成！</h2>
-                          <p className="text-text-secondary">正在跳转到历史记录...</p>
+                          <h2 className="text-2xl font-bold text-text-primary mb-2">
+                            {liveStats.failedCount > 0 ? '测试完成，部分失败' : '测试完成！'}
+                          </h2>
+                          {liveStats.failedCount > 0 ? (
+                            <p className="text-yellow-600">
+                              有 {liveStats.failedCount} 个问题失败，您可以选择重试
+                            </p>
+                          ) : (
+                            <p className="text-text-secondary">正在跳转到历史记录...</p>
+                          )}
                         </>
                       ) : (
                         <>
@@ -816,6 +1064,45 @@ export function TestPage() {
                           />
                         </div>
                       </div>
+
+                      {/* Action Buttons - Show when test completed and needs saving */}
+                      {testCompleted && pendingSaveData && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="mt-6 flex flex-col sm:flex-row gap-3 justify-center"
+                        >
+                          {liveStats.failedCount > 0 ? (
+                            <>
+                              <button
+                                onClick={handleRetryFailed}
+                                disabled={isRetrying || isSaving}
+                                className="flex items-center justify-center space-x-2 px-6 py-3 bg-yellow-500 hover:bg-yellow-600 text-white font-semibold rounded-lg transition-all disabled:opacity-50"
+                              >
+                                <ArrowPathIcon className={`w-5 h-5 ${isRetrying ? 'animate-spin' : ''}`} />
+                                <span>{isRetrying ? '重试中...' : `重试 ${liveStats.failedCount} 个失败问题`}</span>
+                              </button>
+                              <button
+                                onClick={handleSaveAndNavigate}
+                                disabled={isSaving || isRetrying}
+                                className="flex items-center justify-center space-x-2 px-6 py-3 bg-gray-500 hover:bg-gray-600 text-white font-semibold rounded-lg transition-all disabled:opacity-50"
+                              >
+                                <CheckCircleIcon className="w-5 h-5" />
+                                <span>{isSaving ? '保存中...' : '跳过重试，查看结果'}</span>
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={handleSaveAndNavigate}
+                              disabled={isSaving}
+                              className="flex items-center justify-center space-x-2 px-6 py-3 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-lg transition-all disabled:opacity-50"
+                            >
+                              <CheckCircleIcon className="w-5 h-5" />
+                              <span>{isSaving ? '保存中...' : '✅ 保存结果并查看报告'}</span>
+                            </button>
+                          )}
+                        </motion.div>
+                      )}
                     </div>
 
                     {/* Current Question & Response */}
