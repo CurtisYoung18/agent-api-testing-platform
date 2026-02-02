@@ -476,6 +476,8 @@ export function TestPage() {
                   
                   setLiveStats(prev => ({
                     ...prev,
+                    current: prevResults.length, // Fix: update current to total results
+                    total: prevResults.length,   // Fix: update total
                     passedCount,
                     failedCount: remainingFailed,
                     successRate,
@@ -505,11 +507,14 @@ export function TestPage() {
 
   // Save results and navigate to history
   const handleSaveAndNavigate = async () => {
+    console.log('[Save] handleSaveAndNavigate called, pendingSaveData:', !!pendingSaveData)
     if (!pendingSaveData) {
+      console.log('[Save] No pendingSaveData, navigating directly')
       navigate('/history', { state: { refresh: true } })
       return
     }
 
+    console.log('[Save] Starting save with', liveResults.length, 'results')
     setIsSaving(true)
     try {
       // Add retry count info to results
@@ -537,7 +542,7 @@ export function TestPage() {
       }
 
       const data = await response.json()
-      console.log('Saved test results, history ID:', data.historyId)
+      console.log('[Save] Success! History ID:', data.historyId)
       
       navigate('/history', { state: { refresh: true } })
     } catch (error: any) {
@@ -1111,6 +1116,8 @@ export function TestPage() {
                             <p className="text-yellow-600">
                               有 {liveStats.failedCount} 个问题失败，您可以选择重试
                             </p>
+                          ) : pendingSaveData ? (
+                            <p className="text-green-600">点击下方按钮保存结果</p>
                           ) : (
                             <p className="text-text-secondary">正在跳转到历史记录...</p>
                           )}
@@ -1313,7 +1320,7 @@ export function TestPage() {
                                 className="flex items-center justify-center space-x-2 px-6 py-3 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-lg transition-all disabled:opacity-50"
                               >
                                 <CheckCircleIcon className="w-5 h-5" />
-                                <span>{isSaving ? '保存中...' : '✅ 保存结果并查看报告'}</span>
+                                <span>{isSaving ? '保存中...' : '保存结果并查看报告'}</span>
                               </button>
                             </div>
                           )}
