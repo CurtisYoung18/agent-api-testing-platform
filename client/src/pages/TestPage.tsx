@@ -41,6 +41,7 @@ export function TestPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [executionMode, setExecutionMode] = useState<'parallel' | 'sequential'>('parallel')
   const [rpm, setRpm] = useState(60)
+  const [maxConcurrency, setMaxConcurrency] = useState(2) // 最大并发数
   const [customUserId, setCustomUserId] = useState('')
   const [testError, setTestError] = useState('')
   // Real-time testing states
@@ -167,6 +168,9 @@ export function TestPage() {
     formData.append('file', uploadedFile)
     formData.append('executionMode', executionMode)
     formData.append('rpm', rpm.toString())
+    if (executionMode === 'parallel') {
+      formData.append('maxConcurrency', maxConcurrency.toString())
+    }
     if (customUserId.trim()) {
       formData.append('userId', customUserId.trim())
     }
@@ -668,6 +672,30 @@ export function TestPage() {
                     </select>
                   </div>
 
+                  {/* Max Concurrency - only show in parallel mode */}
+                  {executionMode === 'parallel' && (
+                    <div>
+                      <label className="block text-sm font-medium text-text-primary mb-3">
+                        最大并发数
+                      </label>
+                      <select
+                        className="input-field"
+                        value={maxConcurrency}
+                        onChange={(e) => setMaxConcurrency(Number(e.target.value))}
+                      >
+                        <option value={1}>1 (最安全)</option>
+                        <option value={2}>2 (推荐)</option>
+                        <option value={3}>3</option>
+                        <option value={5}>5</option>
+                        <option value={10}>10</option>
+                        <option value={20}>20</option>
+                      </select>
+                      <p className="text-xs text-text-tertiary mt-2">
+                        同时发起的请求数量，API 有并发限制时建议设为 2
+                      </p>
+                    </div>
+                  )}
+
                   {/* Custom User ID */}
                   <div>
                     <label className="block text-sm font-medium text-text-primary mb-3">
@@ -696,6 +724,7 @@ export function TestPage() {
                   </p>
                   <p className="text-sm text-text-secondary">
                     <span className="font-medium">执行模式:</span> {executionMode === 'parallel' ? '并行' : '串行'}
+                    {executionMode === 'parallel' && ` (并发数: ${maxConcurrency})`}
                   </p>
                   <p className="text-sm text-text-secondary">
                     <span className="font-medium">速率限制:</span> {rpm} RPM
@@ -937,7 +966,7 @@ export function TestPage() {
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-text-secondary">执行模式:</span>
                         <span className="font-medium text-text-primary">
-                          {executionMode === 'parallel' ? '并行执行' : '串行执行'}
+                          {executionMode === 'parallel' ? `并行执行 (并发: ${maxConcurrency})` : '串行执行'}
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-sm">

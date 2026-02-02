@@ -554,10 +554,10 @@ async function callAgentAPI(apiKey, region, question, customBaseUrl, customUserI
 app.post('/api/tests', upload.single('file'), async (req, res) => {
   try {
     const file = req.file;
-    const { agentId, executionMode, rpm, userId } = req.body;
+    const { agentId, executionMode, rpm, userId, maxConcurrency } = req.body;
     const wantsStream = req.query.stream === 'true';
 
-    console.log('[tests] Request:', { agentId, executionMode, rpm, userId: userId || '(auto)', wantsStream, hasFile: !!file });
+    console.log('[tests] Request:', { agentId, executionMode, rpm, maxConcurrency: maxConcurrency || '(auto)', userId: userId || '(auto)', wantsStream, hasFile: !!file });
 
     if (!file || !agentId) {
       return res.status(400).json({ error: '缺少必要参数' });
@@ -644,7 +644,8 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
 
       if (isParallel) {
         // Parallel execution: run multiple requests concurrently
-        const concurrency = Math.max(1, Math.ceil(rpmValue / 60)); // requests per second
+        // Use maxConcurrency from request, or fallback to calculated value
+        const concurrency = parseInt(maxConcurrency) || Math.max(1, Math.ceil(rpmValue / 60));
         console.log(`[tests] Parallel mode: concurrency=${concurrency}, rpm=${rpmValue}`);
 
         // Process in batches with concurrency control
@@ -775,6 +776,7 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
       startTime: Date.now(),
       executionMode: executionMode || 'sequential',
       rpm: parseInt(rpm) || 60,
+      maxConcurrency: parseInt(maxConcurrency) || 2,
       userId: userId || null,
     };
 
@@ -792,7 +794,7 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
 
 // Run test async
 async function runTest(testData, agent) {
-  const { questions, referenceOutputs, rpm, userId, executionMode } = testData;
+  const { questions, referenceOutputs, rpm, userId, executionMode, maxConcurrency } = testData;
   const isParallel = executionMode === 'parallel';
 
   // Helper function to process a single question
@@ -824,8 +826,8 @@ async function runTest(testData, agent) {
   };
 
   if (isParallel) {
-    // Parallel execution
-    const concurrency = Math.max(1, Math.ceil(rpm / 60));
+    // Parallel execution - use maxConcurrency or fallback
+    const concurrency = maxConcurrency || Math.max(1, Math.ceil(rpm / 60));
     console.log(`[test] Parallel mode: concurrency=${concurrency}, rpm=${rpm}`);
 
     for (let batchStart = 0; batchStart < questions.length; batchStart += concurrency) {
