@@ -41,6 +41,9 @@ coverage/
 # Test output
 test_output/
 
+# Local data (contains API keys)
+local-data.json
+
 # OS
 Thumbs.db
 

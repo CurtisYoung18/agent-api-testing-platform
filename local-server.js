@@ -3,6 +3,11 @@ import cors from 'cors';
 import multer from 'multer';
 import XLSX from 'xlsx';
 import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(cors());
@@ -11,23 +16,50 @@ app.use(express.json());
 // File upload config
 const upload = multer({ dest: '/tmp/uploads/' });
 
-// Mock database - 内存中的 agents 数据
-const agents = [
-  {
-    id: 1,
-    name: 'mzt-QA',
-    model_name: 'MiniMax-M2',
-    region: 'CUSTOM',
-    api_key: 'app-m3goCK2a07T1FHYi9XVPnUug',
-    custom_base_url: 'http://27.156.118.33:40443',
-    status: 'active',
-    last_used: null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  }
-];
+// Local data file path
+const LOCAL_DATA_FILE = path.join(__dirname, 'local-data.json');
 
-let nextId = 2;
+// Load data from local-data.json
+function loadLocalData() {
+  try {
+    if (fs.existsSync(LOCAL_DATA_FILE)) {
+      const data = JSON.parse(fs.readFileSync(LOCAL_DATA_FILE, 'utf-8'));
+      return {
+        agents: data.agents.map(a => ({
+          ...a,
+          created_at: a.created_at || new Date().toISOString(),
+          updated_at: a.updated_at || new Date().toISOString(),
+        })),
+        nextId: data.nextId || (Math.max(...data.agents.map(a => a.id)) + 1)
+      };
+    }
+  } catch (err) {
+    console.error('Failed to load local-data.json:', err.message);
+  }
+  // Default data if file doesn't exist
+  return {
+    agents: [],
+    nextId: 1
+  };
+}
+
+// Save data to local-data.json
+function saveLocalData() {
+  try {
+    const data = {
+      agents: agents.map(({ created_at, updated_at, ...rest }) => rest),
+      nextId
+    };
+    fs.writeFileSync(LOCAL_DATA_FILE, JSON.stringify(data, null, 2));
+  } catch (err) {
+    console.error('Failed to save local-data.json:', err.message);
+  }
+}
+
+// Initialize data from file
+const localData = loadLocalData();
+const agents = localData.agents;
+let nextId = localData.nextId;
 
 // Helper function to get base URL
 function getBaseUrl(region, customBaseUrl) {
@@ -72,6 +104,7 @@ app.post('/api/agents', (req, res) => {
     updated_at: new Date().toISOString(),
   };
   agents.push(newAgent);
+  saveLocalData(); // 持久化保存
   res.status(201).json({
     id: newAgent.id,
     name: newAgent.name,
@@ -112,6 +145,7 @@ app.delete('/api/agents/:id', (req, res) => {
     return res.status(404).json({ error: 'Agent not found' });
   }
   agents.splice(index, 1);
+  saveLocalData(); // 持久化保存
   res.status(204).send();
 });
 
@@ -230,7 +264,13 @@ app.post('/api/custom-proxy', async (req, res) => {
     return res.status(400).json({ error: '请提供请求 URL' });
   }
 
-  console.log('[custom-proxy] Request:', { url, method, hasHeaders: !!headers, hasBody: !!body });
+  console.log('[custom-proxy] Request:', { 
+    url, 
+    method, 
+    headers: headers ? JSON.stringify(headers) : 'none',
+    bodyType: typeof body,
+    body: body ? (typeof body === 'string' ? body.substring(0, 200) : JSON.stringify(body).substring(0, 200)) : 'none'
+  });
 
   try {
     const requestOptions = {
@@ -238,9 +278,23 @@ app.post('/api/custom-proxy', async (req, res) => {
       headers: headers || {},
     };
 
+    // 处理 body - 如果是字符串形式的 JSON，尝试解析后重新序列化确保格式正确
     if (body && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
-      requestOptions.body = typeof body === 'string' ? body : JSON.stringify(body);
+      if (typeof body === 'string') {
+        // 尝试解析 JSON 字符串，确保格式正确
+        try {
+          const parsedBody = JSON.parse(body);
+          requestOptions.body = JSON.stringify(parsedBody);
+        } catch {
+          // 如果解析失败，直接使用原字符串
+          requestOptions.body = body;
+        }
+      } else {
+        requestOptions.body = JSON.stringify(body);
+      }
     }
+    
+    console.log('[custom-proxy] Sending body:', requestOptions.body);
 
     const startTime = Date.now();
     const response = await fetch(url, requestOptions);
@@ -412,11 +466,14 @@ function parseExcelFile(filePath) {
 }
 
 // Helper: Call Agent API
-async function callAgentAPI(apiKey, region, question, customBaseUrl) {
+async function callAgentAPI(apiKey, region, question, customBaseUrl, customUserId) {
   const startTime = Date.now();
   
   try {
     const baseUrl = getBaseUrl(region, customBaseUrl);
+    
+    // Use custom user_id if provided, otherwise generate default
+    const userId = customUserId || ('test_user_' + Date.now());
 
     // Step 1: Create conversation
     const conversationResponse = await fetch(`${baseUrl}/v1/conversation`, {
@@ -425,7 +482,7 @@ async function callAgentAPI(apiKey, region, question, customBaseUrl) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({ user_id: 'test_user_' + Date.now() }),
+      body: JSON.stringify({ user_id: userId }),
     });
 
     if (!conversationResponse.ok) {
@@ -497,10 +554,10 @@ async function callAgentAPI(apiKey, region, question, customBaseUrl) {
 app.post('/api/tests', upload.single('file'), async (req, res) => {
   try {
     const file = req.file;
-    const { agentId, executionMode, rpm } = req.body;
+    const { agentId, executionMode, rpm, userId } = req.body;
     const wantsStream = req.query.stream === 'true';
 
-    console.log('[tests] Request:', { agentId, executionMode, rpm, wantsStream, hasFile: !!file });
+    console.log('[tests] Request:', { agentId, executionMode, rpm, userId: userId || '(auto)', wantsStream, hasFile: !!file });
 
     if (!file || !agentId) {
       return res.status(400).json({ error: '缺少必要参数' });
@@ -531,24 +588,20 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
       res.setHeader('X-Accel-Buffering', 'no');
       
       // Send initial connection event
-      res.write(`data: ${JSON.stringify({ type: 'connected', totalQuestions: questions.length })}\n\n`);
+      const isParallel = executionMode === 'parallel';
+      res.write(`data: ${JSON.stringify({ type: 'connected', totalQuestions: questions.length, mode: isParallel ? 'parallel' : 'sequential' })}\n\n`);
 
       const startTime = Date.now();
-      const delay = 60000 / (parseInt(rpm) || 60);
+      const rpmValue = parseInt(rpm) || 60;
       const results = [];
       let totalTokens = 0;
       let totalCost = 0;
+      let completedCount = 0;
 
-      for (let i = 0; i < questions.length; i++) {
+      // Helper function to process a single question
+      const processQuestion = async (i) => {
         const question = questions[i];
         const refOutput = referenceOutputs[i] || '';
-
-        // Send progress event
-        res.write(`data: ${JSON.stringify({ 
-          type: 'progress', 
-          current: i + 1, 
-          question: question.slice(0, 100) 
-        })}\n\n`);
 
         console.log(`[tests] Running question ${i + 1}/${questions.length}: ${question.slice(0, 50)}...`);
 
@@ -556,7 +609,8 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
           agent.api_key,
           agent.region,
           question,
-          agent.custom_base_url
+          agent.custom_base_url,
+          userId
         );
 
         // Extract token/cost info
@@ -565,15 +619,13 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
         if (result.success && result.usage) {
           if (result.usage.tokens) {
             questionTokens = result.usage.tokens.total_tokens || 0;
-            totalTokens += questionTokens;
           }
           if (result.usage.credits) {
             questionCost = result.usage.credits.total_credits || 0;
-            totalCost += questionCost;
           }
         }
 
-        const resultData = {
+        return {
           type: 'result',
           questionIndex: i,
           question,
@@ -588,15 +640,74 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
           cost: questionCost,
           timestamp: new Date().toISOString(),
         };
+      };
 
-        results.push(resultData);
+      if (isParallel) {
+        // Parallel execution: run multiple requests concurrently
+        const concurrency = Math.max(1, Math.ceil(rpmValue / 60)); // requests per second
+        console.log(`[tests] Parallel mode: concurrency=${concurrency}, rpm=${rpmValue}`);
 
-        // Send result event
-        res.write(`data: ${JSON.stringify(resultData)}\n\n`);
+        // Process in batches with concurrency control
+        for (let batchStart = 0; batchStart < questions.length; batchStart += concurrency) {
+          const batchEnd = Math.min(batchStart + concurrency, questions.length);
+          const batchIndices = [];
+          for (let i = batchStart; i < batchEnd; i++) {
+            batchIndices.push(i);
+          }
 
-        // Rate limiting
-        if (i < questions.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, delay));
+          // Send progress event
+          res.write(`data: ${JSON.stringify({ 
+            type: 'progress', 
+            current: batchStart + 1,
+            batchSize: batchIndices.length,
+            message: `并行执行 ${batchIndices.length} 个请求...`
+          })}\n\n`);
+
+          // Execute batch in parallel
+          const batchResults = await Promise.all(batchIndices.map(i => processQuestion(i)));
+
+          // Process and send results
+          for (const resultData of batchResults) {
+            results.push(resultData);
+            totalTokens += resultData.tokens || 0;
+            totalCost += resultData.cost || 0;
+            completedCount++;
+
+            // Send result event
+            res.write(`data: ${JSON.stringify(resultData)}\n\n`);
+          }
+
+          // Rate limiting between batches (wait 1 second to respect RPM)
+          if (batchEnd < questions.length) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+      } else {
+        // Sequential execution: one request at a time with delay
+        const delay = 60000 / rpmValue;
+        console.log(`[tests] Sequential mode: delay=${delay}ms, rpm=${rpmValue}`);
+
+        for (let i = 0; i < questions.length; i++) {
+          // Send progress event
+          res.write(`data: ${JSON.stringify({ 
+            type: 'progress', 
+            current: i + 1, 
+            question: questions[i].slice(0, 100) 
+          })}\n\n`);
+
+          const resultData = await processQuestion(i);
+
+          results.push(resultData);
+          totalTokens += resultData.tokens || 0;
+          totalCost += resultData.cost || 0;
+
+          // Send result event
+          res.write(`data: ${JSON.stringify(resultData)}\n\n`);
+
+          // Rate limiting
+          if (i < questions.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
         }
       }
 
@@ -664,6 +775,7 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
       startTime: Date.now(),
       executionMode: executionMode || 'sequential',
       rpm: parseInt(rpm) || 60,
+      userId: userId || null,
     };
 
     testResults.set(testId, testData);
@@ -680,10 +792,11 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
 
 // Run test async
 async function runTest(testData, agent) {
-  const { questions, referenceOutputs, rpm } = testData;
-  const delay = 60000 / rpm; // ms between requests
+  const { questions, referenceOutputs, rpm, userId, executionMode } = testData;
+  const isParallel = executionMode === 'parallel';
 
-  for (let i = 0; i < questions.length; i++) {
+  // Helper function to process a single question
+  const processQuestion = async (i) => {
     const question = questions[i];
     const refOutput = referenceOutputs[i] || '';
 
@@ -693,10 +806,11 @@ async function runTest(testData, agent) {
       agent.api_key,
       agent.region,
       question,
-      agent.custom_base_url
+      agent.custom_base_url,
+      userId
     );
 
-    testData.results.push({
+    return {
       questionIndex: i,
       question,
       referenceOutput: refOutput,
@@ -706,11 +820,42 @@ async function runTest(testData, agent) {
       responseTime: result.responseTime,
       conversationId: result.conversationId,
       messageId: result.messageId,
-    });
+    };
+  };
 
-    // Rate limiting
-    if (i < questions.length - 1) {
-      await new Promise(resolve => setTimeout(resolve, delay));
+  if (isParallel) {
+    // Parallel execution
+    const concurrency = Math.max(1, Math.ceil(rpm / 60));
+    console.log(`[test] Parallel mode: concurrency=${concurrency}, rpm=${rpm}`);
+
+    for (let batchStart = 0; batchStart < questions.length; batchStart += concurrency) {
+      const batchEnd = Math.min(batchStart + concurrency, questions.length);
+      const batchIndices = [];
+      for (let i = batchStart; i < batchEnd; i++) {
+        batchIndices.push(i);
+      }
+
+      const batchResults = await Promise.all(batchIndices.map(i => processQuestion(i)));
+      testData.results.push(...batchResults);
+
+      // Wait 1 second between batches
+      if (batchEnd < questions.length) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+  } else {
+    // Sequential execution
+    const delay = 60000 / rpm;
+    console.log(`[test] Sequential mode: delay=${delay}ms, rpm=${rpm}`);
+
+    for (let i = 0; i < questions.length; i++) {
+      const result = await processQuestion(i);
+      testData.results.push(result);
+
+      // Rate limiting
+      if (i < questions.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
     }
   }
 

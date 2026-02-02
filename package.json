@@ -4,7 +4,9 @@
   "description": "AI Agent API Testing and Evaluation Platform",
   "type": "module",
   "scripts": {
-    "dev": "cd client && npm run dev",
+    "dev": "concurrently \"node local-server.js\" \"cd client && npm run dev\"",
+    "dev:frontend": "cd client && npm run dev",
+    "dev:backend": "node local-server.js",
     "build": "cd client && npm run build",
     "setup": "npm install && cd client && npm install"
   },

@@ -41,6 +41,7 @@ export function TestPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [executionMode, setExecutionMode] = useState<'parallel' | 'sequential'>('parallel')
   const [rpm, setRpm] = useState(60)
+  const [customUserId, setCustomUserId] = useState('')
   const [testError, setTestError] = useState('')
   // Real-time testing states
   const [isTestingLive, setIsTestingLive] = useState(false)
@@ -166,6 +167,9 @@ export function TestPage() {
     formData.append('file', uploadedFile)
     formData.append('executionMode', executionMode)
     formData.append('rpm', rpm.toString())
+    if (customUserId.trim()) {
+      formData.append('userId', customUserId.trim())
+    }
 
     try {
       // Upload file and start test with SSE
@@ -658,7 +662,27 @@ export function TestPage() {
                       <option value={30}>30 请求/分钟</option>
                       <option value={60}>60 请求/分钟</option>
                       <option value={120}>120 请求/分钟</option>
+                      <option value={180}>180 请求/分钟</option>
+                      <option value={300}>300 请求/分钟</option>
+                      <option value={600}>600 请求/分钟</option>
                     </select>
+                  </div>
+
+                  {/* Custom User ID */}
+                  <div>
+                    <label className="block text-sm font-medium text-text-primary mb-3">
+                      会话用户ID (可选)
+                    </label>
+                    <input
+                      type="text"
+                      className="input-field"
+                      placeholder="留空则自动生成 (test_user_时间戳)"
+                      value={customUserId}
+                      onChange={(e) => setCustomUserId(e.target.value)}
+                    />
+                    <p className="text-xs text-text-tertiary mt-2">
+                      指定 GPTBots 创建会话时使用的 user_id，不填则使用默认值
+                    </p>
                   </div>
                 </div>
 
@@ -675,6 +699,9 @@ export function TestPage() {
                   </p>
                   <p className="text-sm text-text-secondary">
                     <span className="font-medium">速率限制:</span> {rpm} RPM
+                  </p>
+                  <p className="text-sm text-text-secondary">
+                    <span className="font-medium">会话用户ID:</span> {customUserId || '自动生成'}
                   </p>
                 </div>
               </div>
@@ -916,6 +943,12 @@ export function TestPage() {
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-text-secondary">速率限制:</span>
                         <span className="font-medium text-text-primary">{rpm} RPM</span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-text-secondary">会话用户ID:</span>
+                        <span className="font-medium text-text-primary">
+                          {customUserId || '自动生成'}
+                        </span>
                       </div>
                     </div>
 
