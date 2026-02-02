@@ -63,6 +63,12 @@ export function TestPage() {
   const [isAborting, setIsAborting] = useState(false)
   // Custom concurrency input
   const [customConcurrency, setCustomConcurrency] = useState('')
+  // Retry configuration (can be different from initial config)
+  const [retryExecutionMode, setRetryExecutionMode] = useState<'parallel' | 'sequential'>('parallel')
+  const [retryMaxConcurrency, setRetryMaxConcurrency] = useState(2)
+  const [retryRequestDelay, setRetryRequestDelay] = useState(0)
+  const [retryRequestTimeout, setRetryRequestTimeout] = useState(60000)
+  const [showRetryConfig, setShowRetryConfig] = useState(false)
   const [currentQuestion, setCurrentQuestion] = useState('')
   const [currentResponse, setCurrentResponse] = useState('')
   const [previewQuestions, setPreviewQuestions] = useState<string[]>([])
@@ -278,6 +284,12 @@ export function TestPage() {
                     failedCount: data.failedCount,
                     successRate: data.successRate,
                   }))
+                  // Initialize retry config with current settings
+                  setRetryExecutionMode(executionMode)
+                  setRetryMaxConcurrency(maxConcurrency)
+                  setRetryRequestDelay(requestDelay)
+                  setRetryRequestTimeout(requestTimeout)
+                  setShowRetryConfig(false)
                   setCurrentResponse(`⚠️ 测试完成，但有 ${data.failedCount} 个问题失败。您可以选择重试失败的问题。`)
                 } else {
                   // All passed - already saved, navigate to history
@@ -300,6 +312,12 @@ export function TestPage() {
         setTestCompleted(true)
         setCurrentQuestion('')
         setCurrentResponse('⏹️ 测试已中断')
+        // Initialize retry config with current settings
+        setRetryExecutionMode(executionMode)
+        setRetryMaxConcurrency(maxConcurrency)
+        setRetryRequestDelay(requestDelay)
+        setRetryRequestTimeout(requestTimeout)
+        setShowRetryConfig(false)
         // Set pending save data so user can save partial results
         setLiveResults(prevResults => {
           if (prevResults.length > 0) {
@@ -366,7 +384,8 @@ export function TestPage() {
     setIsRetrying(true)
     setTestCompleted(false)
     setCurrentQuestion('')
-    setCurrentResponse('正在重试失败的问题...')
+    const modeText = retryExecutionMode === 'parallel' ? `并行(${retryMaxConcurrency}并发)` : `串行(间隔${retryRequestDelay/1000}秒)`
+    setCurrentResponse(`正在以 ${modeText} 模式重试失败的问题...`)
 
     try {
       const response = await fetch('/api/tests/retry?stream=true', {
@@ -377,10 +396,10 @@ export function TestPage() {
         body: JSON.stringify({
           agentId: selectedAgent.id,
           questions: failedQuestions,
-          executionMode,
-          requestTimeout,
-          maxConcurrency,
-          requestDelay,
+          executionMode: retryExecutionMode,
+          requestTimeout: retryRequestTimeout,
+          maxConcurrency: retryMaxConcurrency,
+          requestDelay: retryRequestDelay,
           userId: customUserId.trim() || undefined,
         }),
       })
@@ -949,8 +968,8 @@ export function TestPage() {
                           <option value={5}>5 个/批</option>
                           <option value={10}>10 个/批</option>
                           <option value={20}>20 个/批</option>
-                          <option value={50}>50 个/批</option>
-                          <option value={100}>100 个/批</option>
+                          <option value={30}>30 个/批</option>
+                          <option value={50}>50 个/批 (最大推荐)</option>
                           <option value="custom">自定义...</option>
                         </select>
                         {customConcurrency !== '' && (
@@ -959,12 +978,12 @@ export function TestPage() {
                             className="input-field w-24"
                             placeholder="数量"
                             min={1}
-                            max={500}
+                            max={50}
                             value={customConcurrency}
                             onChange={(e) => {
                               setCustomConcurrency(e.target.value)
                               const val = parseInt(e.target.value)
-                              if (val > 0 && val <= 500) {
+                              if (val > 0 && val <= 50) {
                                 setMaxConcurrency(val)
                               }
                             }}
@@ -1174,36 +1193,130 @@ export function TestPage() {
                         <motion.div
                           initial={{ opacity: 0, y: 10 }}
                           animate={{ opacity: 1, y: 0 }}
-                          className="mt-6 flex flex-col sm:flex-row gap-3 justify-center"
+                          className="mt-6 space-y-4"
                         >
                           {liveStats.failedCount > 0 ? (
                             <>
-                              <button
-                                onClick={handleRetryFailed}
-                                disabled={isRetrying || isSaving}
-                                className="flex items-center justify-center space-x-2 px-6 py-3 bg-yellow-500 hover:bg-yellow-600 text-white font-semibold rounded-lg transition-all disabled:opacity-50"
-                              >
-                                <ArrowPathIcon className={`w-5 h-5 ${isRetrying ? 'animate-spin' : ''}`} />
-                                <span>{isRetrying ? '重试中...' : `重试 ${liveStats.failedCount} 个失败问题`}</span>
-                              </button>
-                              <button
-                                onClick={handleSaveAndNavigate}
-                                disabled={isSaving || isRetrying}
-                                className="flex items-center justify-center space-x-2 px-6 py-3 bg-gray-500 hover:bg-gray-600 text-white font-semibold rounded-lg transition-all disabled:opacity-50"
-                              >
-                                <CheckCircleIcon className="w-5 h-5" />
-                                <span>{isSaving ? '保存中...' : '跳过重试，查看结果'}</span>
-                              </button>
+                              {/* Retry Config Toggle */}
+                              <div className="flex justify-center">
+                                <button
+                                  onClick={() => setShowRetryConfig(!showRetryConfig)}
+                                  className="text-sm text-primary-600 hover:text-primary-700 flex items-center gap-1"
+                                >
+                                  <Cog6ToothIcon className="w-4 h-4" />
+                                  {showRetryConfig ? '收起重试配置' : '展开重试配置'}
+                                </button>
+                              </div>
+
+                              {/* Retry Configuration Panel */}
+                              {showRetryConfig && (
+                                <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                                  <p className="text-sm font-medium text-text-primary mb-2">重试配置（可修改）</p>
+                                  
+                                  {/* Execution Mode */}
+                                  <div className="flex items-center gap-4">
+                                    <label className="text-sm text-text-secondary w-20">执行模式:</label>
+                                    <div className="flex gap-2">
+                                      <button
+                                        onClick={() => setRetryExecutionMode('parallel')}
+                                        className={`px-3 py-1 text-sm rounded ${retryExecutionMode === 'parallel' ? 'bg-primary-500 text-white' : 'bg-white border text-text-secondary'}`}
+                                      >
+                                        并行
+                                      </button>
+                                      <button
+                                        onClick={() => setRetryExecutionMode('sequential')}
+                                        className={`px-3 py-1 text-sm rounded ${retryExecutionMode === 'sequential' ? 'bg-primary-500 text-white' : 'bg-white border text-text-secondary'}`}
+                                      >
+                                        串行
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* Parallel: Concurrency / Sequential: Delay */}
+                                  {retryExecutionMode === 'parallel' ? (
+                                    <div className="flex items-center gap-4">
+                                      <label className="text-sm text-text-secondary w-20">并发数:</label>
+                                      <select
+                                        className="input-field text-sm py-1"
+                                        value={retryMaxConcurrency}
+                                        onChange={(e) => setRetryMaxConcurrency(Number(e.target.value))}
+                                      >
+                                        <option value={1}>1 (最安全)</option>
+                                        <option value={2}>2</option>
+                                        <option value={5}>5</option>
+                                        <option value={10}>10</option>
+                                        <option value={20}>20</option>
+                                      </select>
+                                      <span className="text-xs text-text-tertiary">重试建议用较低并发</span>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center gap-4">
+                                      <label className="text-sm text-text-secondary w-20">请求间隔:</label>
+                                      <select
+                                        className="input-field text-sm py-1"
+                                        value={retryRequestDelay}
+                                        onChange={(e) => setRetryRequestDelay(Number(e.target.value))}
+                                      >
+                                        <option value={0}>无间隔</option>
+                                        <option value={500}>0.5 秒</option>
+                                        <option value={1000}>1 秒</option>
+                                        <option value={2000}>2 秒</option>
+                                        <option value={5000}>5 秒</option>
+                                      </select>
+                                    </div>
+                                  )}
+
+                                  {/* Timeout */}
+                                  <div className="flex items-center gap-4">
+                                    <label className="text-sm text-text-secondary w-20">超时时间:</label>
+                                    <select
+                                      className="input-field text-sm py-1"
+                                      value={retryRequestTimeout}
+                                      onChange={(e) => setRetryRequestTimeout(Number(e.target.value))}
+                                    >
+                                      <option value={30000}>30 秒</option>
+                                      <option value={60000}>60 秒</option>
+                                      <option value={120000}>2 分钟</option>
+                                      <option value={180000}>3 分钟</option>
+                                    </select>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Action Buttons */}
+                              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                                <button
+                                  onClick={handleRetryFailed}
+                                  disabled={isRetrying || isSaving}
+                                  className="flex items-center justify-center space-x-2 px-6 py-3 bg-yellow-500 hover:bg-yellow-600 text-white font-semibold rounded-lg transition-all disabled:opacity-50"
+                                >
+                                  <ArrowPathIcon className={`w-5 h-5 ${isRetrying ? 'animate-spin' : ''}`} />
+                                  <span>
+                                    {isRetrying ? '重试中...' : `重试 ${liveStats.failedCount} 个失败问题`}
+                                    {!isRetrying && ` (${retryExecutionMode === 'parallel' ? `并行${retryMaxConcurrency}` : '串行'})`}
+                                  </span>
+                                </button>
+                                <button
+                                  onClick={handleSaveAndNavigate}
+                                  disabled={isSaving || isRetrying}
+                                  className="flex items-center justify-center space-x-2 px-6 py-3 bg-gray-500 hover:bg-gray-600 text-white font-semibold rounded-lg transition-all disabled:opacity-50"
+                                >
+                                  <CheckCircleIcon className="w-5 h-5" />
+                                  <span>{isSaving ? '保存中...' : '跳过重试，查看结果'}</span>
+                                </button>
+                              </div>
                             </>
                           ) : (
-                            <button
-                              onClick={handleSaveAndNavigate}
-                              disabled={isSaving}
-                              className="flex items-center justify-center space-x-2 px-6 py-3 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-lg transition-all disabled:opacity-50"
-                            >
-                              <CheckCircleIcon className="w-5 h-5" />
-                              <span>{isSaving ? '保存中...' : '✅ 保存结果并查看报告'}</span>
-                            </button>
+                            <div className="flex justify-center">
+                              <button
+                                onClick={handleSaveAndNavigate}
+                                disabled={isSaving}
+                                className="flex items-center justify-center space-x-2 px-6 py-3 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-lg transition-all disabled:opacity-50"
+                              >
+                                <CheckCircleIcon className="w-5 h-5" />
+                                <span>{isSaving ? '保存中...' : '✅ 保存结果并查看报告'}</span>
+                              </button>
+                            </div>
                           )}
                         </motion.div>
                       )}
