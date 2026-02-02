@@ -57,6 +57,8 @@ export interface TestHistory {
   avgResponseTime: number | null;
   executionMode: 'parallel' | 'sequential' | null;
   rpm: number | null;
+  maxConcurrency?: number;
+  requestDelay?: number;
   timeoutSeconds: number | null;
   retryCount: number | null;
   jsonData: any;
