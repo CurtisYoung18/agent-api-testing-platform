@@ -1142,9 +1142,9 @@ export function TestPage() {
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="text-center">
                           <p className="text-3xl font-bold text-primary-500">
-                            {liveStats.current}/{liveStats.total}
+                            {liveStats.passedCount}/{liveStats.total}
                           </p>
-                          <p className="text-sm text-text-tertiary mt-1">进度</p>
+                          <p className="text-sm text-text-tertiary mt-1">成功/总数</p>
                         </div>
                         <div className="text-center">
                           <p className="text-3xl font-bold text-green-500">
@@ -1172,7 +1172,7 @@ export function TestPage() {
                           <motion.div
                             className="h-full bg-gradient-to-r from-primary-400 to-primary-600"
                             initial={{ width: 0 }}
-                            animate={{ width: `${liveStats.total > 0 ? (liveStats.current / liveStats.total) * 100 : 0}%` }}
+                            animate={{ width: `${liveStats.total > 0 ? (liveStats.passedCount / liveStats.total) * 100 : 0}%` }}
                             transition={{ duration: 0.3 }}
                           />
                         </div>
