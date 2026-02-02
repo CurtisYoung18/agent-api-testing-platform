@@ -11,7 +11,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 
 // File upload config
 const upload = multer({ dest: '/tmp/uploads/' });
@@ -867,7 +867,7 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
 });
 
 // POST /api/tests/save - 保存测试结果到历史记录（用于有失败后确认保存）
-app.post('/api/tests/save', express.json(), async (req, res) => {
+app.post('/api/tests/save', express.json({ limit: '50mb' }), async (req, res) => {
   try {
     const { results, testConfig, durationSeconds, totalTokens, totalCost } = req.body;
 
@@ -938,7 +938,7 @@ app.post('/api/tests/save', express.json(), async (req, res) => {
 });
 
 // POST /api/tests/retry - 重试失败的测试问题 (支持 SSE 流式)
-app.post('/api/tests/retry', express.json(), async (req, res) => {
+app.post('/api/tests/retry', express.json({ limit: '50mb' }), async (req, res) => {
   try {
     const { agentId, questions, executionMode, requestTimeout, maxConcurrency, requestDelay, userId } = req.body;
     const wantsStream = req.query.stream === 'true';
