@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useDropzone } from 'react-dropzone'
@@ -58,6 +58,11 @@ export function TestPage() {
   // Pending save (when test has failures)
   const [pendingSaveData, setPendingSaveData] = useState<any>(null)
   const [isSaving, setIsSaving] = useState(false)
+  // Abort test
+  const abortControllerRef = useRef<AbortController | null>(null)
+  const [isAborting, setIsAborting] = useState(false)
+  // Custom concurrency input
+  const [customConcurrency, setCustomConcurrency] = useState('')
   const [currentQuestion, setCurrentQuestion] = useState('')
   const [currentResponse, setCurrentResponse] = useState('')
   const [previewQuestions, setPreviewQuestions] = useState<string[]>([])
@@ -171,6 +176,13 @@ export function TestPage() {
     setCurrentResponse('')
     setLiveStats({ current: 0, total: 0, passedCount: 0, failedCount: 0, successRate: '0.00' })
     setExpandedResults(new Set())
+    setIsAborting(false)
+    setPendingSaveData(null)
+    setRetryAttempts(new Map())
+    
+    // Create abort controller for this request
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
     
     const formData = new FormData()
     formData.append('agentId', selectedAgent.id.toString())
@@ -191,6 +203,7 @@ export function TestPage() {
       const response = await fetch('/api/tests?stream=true', {
         method: 'POST',
         body: formData,
+        signal: abortController.signal,
       })
 
       if (!response.ok) {
@@ -281,10 +294,57 @@ export function TestPage() {
         }
       }
     } catch (error: any) {
-      console.error('Test execution error:', error)
-      setTestError(error.message || '测试执行失败，请重试')
-      setIsTestingLive(false)
-      setTestCompleted(false)
+      // Check if this was an abort
+      if (error.name === 'AbortError' || isAborting) {
+        console.log('Test aborted by user')
+        setTestCompleted(true)
+        setCurrentQuestion('')
+        setCurrentResponse('⏹️ 测试已中断')
+        // Set pending save data so user can save partial results
+        setLiveResults(prevResults => {
+          if (prevResults.length > 0) {
+            const passedCount = prevResults.filter(r => r.success).length
+            const failedCount = prevResults.length - passedCount
+            setPendingSaveData({
+              results: prevResults,
+              testConfig: {
+                agentId: selectedAgent?.id,
+                agentName: selectedAgent?.name,
+                executionMode,
+                maxConcurrency,
+                requestDelay,
+              },
+              durationSeconds: 0,
+              totalTokens: 0,
+              totalCost: 0,
+            })
+            setLiveStats(prev => ({
+              ...prev,
+              passedCount,
+              failedCount,
+              successRate: prevResults.length > 0 ? ((passedCount / prevResults.length) * 100).toFixed(2) : '0.00',
+            }))
+          }
+          return prevResults
+        })
+      } else {
+        console.error('Test execution error:', error)
+        setTestError(error.message || '测试执行失败，请重试')
+        setIsTestingLive(false)
+        setTestCompleted(false)
+      }
+    } finally {
+      abortControllerRef.current = null
+      setIsAborting(false)
+    }
+  }
+
+  // Handle abort test
+  const handleAbortTest = () => {
+    if (abortControllerRef.current) {
+      setIsAborting(true)
+      setCurrentResponse('⏹️ 正在中断测试...')
+      abortControllerRef.current.abort()
     }
   }
 
@@ -871,20 +931,48 @@ export function TestPage() {
                       <label className="block text-sm font-medium text-text-primary mb-3">
                         最大并发数
                       </label>
-                      <select
-                        className="input-field"
-                        value={maxConcurrency}
-                        onChange={(e) => setMaxConcurrency(Number(e.target.value))}
-                      >
-                        <option value={1}>1 个/批 (最安全)</option>
-                        <option value={2}>2 个/批 (推荐)</option>
-                        <option value={3}>3 个/批</option>
-                        <option value={5}>5 个/批</option>
-                        <option value={10}>10 个/批</option>
-                        <option value={20}>20 个/批</option>
-                      </select>
+                      <div className="flex gap-2">
+                        <select
+                          className="input-field flex-1"
+                          value={customConcurrency ? 'custom' : maxConcurrency}
+                          onChange={(e) => {
+                            if (e.target.value === 'custom') {
+                              setCustomConcurrency(maxConcurrency.toString())
+                            } else {
+                              setCustomConcurrency('')
+                              setMaxConcurrency(Number(e.target.value))
+                            }
+                          }}
+                        >
+                          <option value={1}>1 个/批 (最安全)</option>
+                          <option value={2}>2 个/批</option>
+                          <option value={5}>5 个/批</option>
+                          <option value={10}>10 个/批</option>
+                          <option value={20}>20 个/批</option>
+                          <option value={50}>50 个/批</option>
+                          <option value={100}>100 个/批</option>
+                          <option value="custom">自定义...</option>
+                        </select>
+                        {customConcurrency !== '' && (
+                          <input
+                            type="number"
+                            className="input-field w-24"
+                            placeholder="数量"
+                            min={1}
+                            max={500}
+                            value={customConcurrency}
+                            onChange={(e) => {
+                              setCustomConcurrency(e.target.value)
+                              const val = parseInt(e.target.value)
+                              if (val > 0 && val <= 500) {
+                                setMaxConcurrency(val)
+                              }
+                            }}
+                          />
+                        )}
+                      </div>
                       <p className="text-xs text-text-tertiary mt-2">
-                        每批同时发起的请求数，批次间隔 1 秒。API 有并发限制时建议设为 2
+                        每批同时发起的请求数，批次间隔 1 秒。有重试功能兜底，可大胆设置
                       </p>
                     </div>
                   ) : (
@@ -1064,6 +1152,22 @@ export function TestPage() {
                           />
                         </div>
                       </div>
+
+                      {/* Abort Button - Show when test is running */}
+                      {!testCompleted && isTestingLive && (
+                        <div className="mt-6 flex justify-center">
+                          <button
+                            onClick={handleAbortTest}
+                            disabled={isAborting}
+                            className="flex items-center justify-center space-x-2 px-6 py-3 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg transition-all disabled:opacity-50"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <rect x="6" y="6" width="12" height="12" rx="1" strokeWidth="2" />
+                            </svg>
+                            <span>{isAborting ? '正在中断...' : '中断测试'}</span>
+                          </button>
+                        </div>
+                      )}
 
                       {/* Action Buttons - Show when test completed and needs saving */}
                       {testCompleted && pendingSaveData && (
