@@ -644,9 +644,8 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
 
       if (isParallel) {
         // Parallel execution: run multiple requests concurrently
-        // Use maxConcurrency from request, or fallback to calculated value
-        const concurrency = parseInt(maxConcurrency) || Math.max(1, Math.ceil(rpmValue / 60));
-        console.log(`[tests] Parallel mode: concurrency=${concurrency}, rpm=${rpmValue}`);
+        const concurrency = parseInt(maxConcurrency) || 2; // default to 2 if not specified
+        console.log(`[tests] Parallel mode: concurrency=${concurrency}`);
 
         // Process in batches with concurrency control
         for (let batchStart = 0; batchStart < questions.length; batchStart += concurrency) {
@@ -826,9 +825,9 @@ async function runTest(testData, agent) {
   };
 
   if (isParallel) {
-    // Parallel execution - use maxConcurrency or fallback
-    const concurrency = maxConcurrency || Math.max(1, Math.ceil(rpm / 60));
-    console.log(`[test] Parallel mode: concurrency=${concurrency}, rpm=${rpm}`);
+    // Parallel execution - use maxConcurrency
+    const concurrency = maxConcurrency || 2; // default to 2 if not specified
+    console.log(`[test] Parallel mode: concurrency=${concurrency}`);
 
     for (let batchStart = 0; batchStart < questions.length; batchStart += concurrency) {
       const batchEnd = Math.min(batchStart + concurrency, questions.length);

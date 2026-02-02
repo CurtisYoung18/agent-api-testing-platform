@@ -652,40 +652,8 @@ export function TestPage() {
                     </div>
                   </div>
 
-                  {/* RPM / Request Rate */}
-                  <div>
-                    <label className="block text-sm font-medium text-text-primary mb-3">
-                      {executionMode === 'parallel' ? '请求速率' : '速率限制 (RPM)'}
-                    </label>
-                    <select
-                      className="input-field"
-                      value={rpm}
-                      onChange={(e) => setRpm(Number(e.target.value))}
-                    >
-                      {executionMode === 'parallel' ? (
-                        <>
-                          <option value={60}>1 问题/秒</option>
-                          <option value={120}>2 问题/秒</option>
-                          <option value={180}>3 问题/秒</option>
-                          <option value={300}>5 问题/秒</option>
-                          <option value={600}>10 问题/秒</option>
-                          <option value={1200}>20 问题/秒</option>
-                        </>
-                      ) : (
-                        <>
-                          <option value={10}>10 请求/分钟</option>
-                          <option value={30}>30 请求/分钟</option>
-                          <option value={60}>60 请求/分钟</option>
-                          <option value={120}>120 请求/分钟</option>
-                          <option value={180}>180 请求/分钟</option>
-                          <option value={300}>300 请求/分钟</option>
-                        </>
-                      )}
-                    </select>
-                  </div>
-
-                  {/* Max Concurrency - only show in parallel mode */}
-                  {executionMode === 'parallel' && (
+                  {/* Parallel: Max Concurrency / Sequential: Request Rate */}
+                  {executionMode === 'parallel' ? (
                     <div>
                       <label className="block text-sm font-medium text-text-primary mb-3">
                         最大并发数
@@ -695,15 +663,37 @@ export function TestPage() {
                         value={maxConcurrency}
                         onChange={(e) => setMaxConcurrency(Number(e.target.value))}
                       >
-                        <option value={1}>1 (最安全)</option>
-                        <option value={2}>2 (推荐)</option>
-                        <option value={3}>3</option>
-                        <option value={5}>5</option>
-                        <option value={10}>10</option>
-                        <option value={20}>20</option>
+                        <option value={1}>1 个/批 (最安全)</option>
+                        <option value={2}>2 个/批 (推荐)</option>
+                        <option value={3}>3 个/批</option>
+                        <option value={5}>5 个/批</option>
+                        <option value={10}>10 个/批</option>
+                        <option value={20}>20 个/批</option>
                       </select>
                       <p className="text-xs text-text-tertiary mt-2">
-                        同时发起的请求数量，API 有并发限制时建议设为 2
+                        每批同时发起的请求数，批次间隔 1 秒。API 有并发限制时建议设为 2
+                      </p>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-sm font-medium text-text-primary mb-3">
+                        请求速率
+                      </label>
+                      <select
+                        className="input-field"
+                        value={rpm}
+                        onChange={(e) => setRpm(Number(e.target.value))}
+                      >
+                        <option value={6}>0.1 问题/秒 (6 RPM)</option>
+                        <option value={12}>0.2 问题/秒 (12 RPM)</option>
+                        <option value={30}>0.5 问题/秒 (30 RPM)</option>
+                        <option value={60}>1 问题/秒 (60 RPM)</option>
+                        <option value={120}>2 问题/秒 (120 RPM)</option>
+                        <option value={180}>3 问题/秒 (180 RPM)</option>
+                        <option value={300}>5 问题/秒 (300 RPM)</option>
+                      </select>
+                      <p className="text-xs text-text-tertiary mt-2">
+                        每秒发送的请求数量，逐个执行
                       </p>
                     </div>
                   )}
@@ -736,10 +726,13 @@ export function TestPage() {
                   </p>
                   <p className="text-sm text-text-secondary">
                     <span className="font-medium">执行模式:</span> {executionMode === 'parallel' ? '并行' : '串行'}
-                    {executionMode === 'parallel' && ` (并发数: ${maxConcurrency})`}
                   </p>
                   <p className="text-sm text-text-secondary">
-                    <span className="font-medium">请求速率:</span> {executionMode === 'parallel' ? `${rpm / 60} 问题/秒` : `${rpm} RPM`}
+                    {executionMode === 'parallel' ? (
+                      <><span className="font-medium">并发数:</span> {maxConcurrency} 个/批</>
+                    ) : (
+                      <><span className="font-medium">请求速率:</span> {(rpm / 60).toFixed(1)} 问题/秒 ({rpm} RPM)</>
+                    )}
                   </p>
                   <p className="text-sm text-text-secondary">
                     <span className="font-medium">会话用户ID:</span> {customUserId || '自动生成'}
@@ -978,13 +971,15 @@ export function TestPage() {
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-text-secondary">执行模式:</span>
                         <span className="font-medium text-text-primary">
-                          {executionMode === 'parallel' ? `并行执行 (并发: ${maxConcurrency})` : '串行执行'}
+                          {executionMode === 'parallel' ? '并行执行' : '串行执行'}
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-text-secondary">请求速率:</span>
+                        <span className="text-text-secondary">{executionMode === 'parallel' ? '并发数:' : '请求速率:'}</span>
                         <span className="font-medium text-text-primary">
-                          {executionMode === 'parallel' ? `${rpm / 60} 问题/秒` : `${rpm} RPM`}
+                          {executionMode === 'parallel' 
+                            ? `${maxConcurrency} 个/批` 
+                            : `${(rpm / 60).toFixed(1)} 问题/秒 (${rpm} RPM)`}
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-sm">
