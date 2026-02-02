@@ -554,10 +554,19 @@ async function callAgentAPI(apiKey, region, question, customBaseUrl, customUserI
 app.post('/api/tests', upload.single('file'), async (req, res) => {
   try {
     const file = req.file;
-    const { agentId, executionMode, rpm, userId, maxConcurrency } = req.body;
+    const { agentId, executionMode, userId, maxConcurrency, requestDelay } = req.body;
     const wantsStream = req.query.stream === 'true';
 
-    console.log('[tests] Request:', { agentId, executionMode, rpm, maxConcurrency: maxConcurrency || '(auto)', userId: userId || '(auto)', wantsStream, hasFile: !!file });
+    console.log('[tests] Request:', { 
+      agentId, 
+      executionMode, 
+      ...(executionMode === 'parallel' 
+        ? { maxConcurrency: maxConcurrency || 2 } 
+        : { requestDelay: `${requestDelay || 0}ms` }),
+      userId: userId || '(auto)', 
+      wantsStream, 
+      hasFile: !!file 
+    });
 
     if (!file || !agentId) {
       return res.status(400).json({ error: '缺少必要参数' });
@@ -592,7 +601,6 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
       res.write(`data: ${JSON.stringify({ type: 'connected', totalQuestions: questions.length, mode: isParallel ? 'parallel' : 'sequential' })}\n\n`);
 
       const startTime = Date.now();
-      const rpmValue = parseInt(rpm) || 60;
       const results = [];
       let totalTokens = 0;
       let totalCost = 0;
@@ -683,9 +691,9 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
           }
         }
       } else {
-        // Sequential execution: one request at a time with delay
-        const delay = 60000 / rpmValue;
-        console.log(`[tests] Sequential mode: delay=${delay}ms, rpm=${rpmValue}`);
+        // Sequential execution: one request at a time with delay after each response
+        const delay = parseInt(requestDelay) || 0;
+        console.log(`[tests] Sequential mode: delay=${delay}ms`);
 
         for (let i = 0; i < questions.length; i++) {
           // Send progress event
@@ -729,7 +737,9 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
         durationSeconds,
         avgResponseTime,
         executionMode: executionMode || 'sequential',
-        rpm: parseInt(rpm) || 60,
+        maxConcurrency: parseInt(maxConcurrency) || 2,
+        requestDelay: parseInt(requestDelay) || 0,
+        rpm: 0, // deprecated, kept for compatibility
         totalTokens,
         totalCost,
         testDate: new Date().toISOString(),
@@ -774,8 +784,8 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
       results: [],
       startTime: Date.now(),
       executionMode: executionMode || 'sequential',
-      rpm: parseInt(rpm) || 60,
       maxConcurrency: parseInt(maxConcurrency) || 2,
+      requestDelay: parseInt(requestDelay) || 0,
       userId: userId || null,
     };
 
@@ -793,7 +803,7 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
 
 // Run test async
 async function runTest(testData, agent) {
-  const { questions, referenceOutputs, rpm, userId, executionMode, maxConcurrency } = testData;
+  const { questions, referenceOutputs, userId, executionMode, maxConcurrency, requestDelay } = testData;
   const isParallel = executionMode === 'parallel';
 
   // Helper function to process a single question
@@ -845,9 +855,9 @@ async function runTest(testData, agent) {
       }
     }
   } else {
-    // Sequential execution
-    const delay = 60000 / rpm;
-    console.log(`[test] Sequential mode: delay=${delay}ms, rpm=${rpm}`);
+    // Sequential execution - wait after each response
+    const delay = requestDelay || 0;
+    console.log(`[test] Sequential mode: delay=${delay}ms`);
 
     for (let i = 0; i < questions.length; i++) {
       const result = await processQuestion(i);

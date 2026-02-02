@@ -40,8 +40,8 @@ export function TestPage() {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [executionMode, setExecutionMode] = useState<'parallel' | 'sequential'>('parallel')
-  const [rpm, setRpm] = useState(60)
-  const [maxConcurrency, setMaxConcurrency] = useState(2) // 最大并发数
+  const [maxConcurrency, setMaxConcurrency] = useState(2) // 并行模式：最大并发数
+  const [requestDelay, setRequestDelay] = useState(0) // 串行模式：请求间隔（毫秒）
   const [customUserId, setCustomUserId] = useState('')
   const [testError, setTestError] = useState('')
   // Real-time testing states
@@ -167,9 +167,10 @@ export function TestPage() {
     formData.append('agentId', selectedAgent.id.toString())
     formData.append('file', uploadedFile)
     formData.append('executionMode', executionMode)
-    formData.append('rpm', rpm.toString())
     if (executionMode === 'parallel') {
       formData.append('maxConcurrency', maxConcurrency.toString())
+    } else {
+      formData.append('requestDelay', requestDelay.toString())
     }
     if (customUserId.trim()) {
       formData.append('userId', customUserId.trim())
@@ -677,23 +678,22 @@ export function TestPage() {
                   ) : (
                     <div>
                       <label className="block text-sm font-medium text-text-primary mb-3">
-                        请求速率
+                        请求间隔
                       </label>
                       <select
                         className="input-field"
-                        value={rpm}
-                        onChange={(e) => setRpm(Number(e.target.value))}
+                        value={requestDelay}
+                        onChange={(e) => setRequestDelay(Number(e.target.value))}
                       >
-                        <option value={6}>0.1 问题/秒 (6 RPM)</option>
-                        <option value={12}>0.2 问题/秒 (12 RPM)</option>
-                        <option value={30}>0.5 问题/秒 (30 RPM)</option>
-                        <option value={60}>1 问题/秒 (60 RPM)</option>
-                        <option value={120}>2 问题/秒 (120 RPM)</option>
-                        <option value={180}>3 问题/秒 (180 RPM)</option>
-                        <option value={300}>5 问题/秒 (300 RPM)</option>
+                        <option value={0}>无间隔 (收到回答立即发下一个)</option>
+                        <option value={500}>0.5 秒</option>
+                        <option value={1000}>1 秒</option>
+                        <option value={2000}>2 秒</option>
+                        <option value={5000}>5 秒</option>
+                        <option value={10000}>10 秒</option>
                       </select>
                       <p className="text-xs text-text-tertiary mt-2">
-                        每秒发送的请求数量，逐个执行
+                        收到上一个回答后，等待多久再发下一个问题
                       </p>
                     </div>
                   )}
@@ -731,7 +731,7 @@ export function TestPage() {
                     {executionMode === 'parallel' ? (
                       <><span className="font-medium">并发数:</span> {maxConcurrency} 个/批</>
                     ) : (
-                      <><span className="font-medium">请求速率:</span> {(rpm / 60).toFixed(1)} 问题/秒 ({rpm} RPM)</>
+                      <><span className="font-medium">请求间隔:</span> {requestDelay === 0 ? '无间隔' : `${requestDelay / 1000} 秒`}</>
                     )}
                   </p>
                   <p className="text-sm text-text-secondary">
@@ -975,11 +975,11 @@ export function TestPage() {
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-text-secondary">{executionMode === 'parallel' ? '并发数:' : '请求速率:'}</span>
+                        <span className="text-text-secondary">{executionMode === 'parallel' ? '并发数:' : '请求间隔:'}</span>
                         <span className="font-medium text-text-primary">
                           {executionMode === 'parallel' 
                             ? `${maxConcurrency} 个/批` 
-                            : `${(rpm / 60).toFixed(1)} 问题/秒 (${rpm} RPM)`}
+                            : (requestDelay === 0 ? '无间隔' : `${requestDelay / 1000} 秒`)}
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-sm">
