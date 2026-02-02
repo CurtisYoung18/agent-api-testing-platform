@@ -652,23 +652,35 @@ export function TestPage() {
                     </div>
                   </div>
 
-                  {/* RPM */}
+                  {/* RPM / Request Rate */}
                   <div>
                     <label className="block text-sm font-medium text-text-primary mb-3">
-                      速率限制 (RPM)
+                      {executionMode === 'parallel' ? '请求速率' : '速率限制 (RPM)'}
                     </label>
                     <select
                       className="input-field"
                       value={rpm}
                       onChange={(e) => setRpm(Number(e.target.value))}
                     >
-                      <option value={10}>10 请求/分钟</option>
-                      <option value={30}>30 请求/分钟</option>
-                      <option value={60}>60 请求/分钟</option>
-                      <option value={120}>120 请求/分钟</option>
-                      <option value={180}>180 请求/分钟</option>
-                      <option value={300}>300 请求/分钟</option>
-                      <option value={600}>600 请求/分钟</option>
+                      {executionMode === 'parallel' ? (
+                        <>
+                          <option value={60}>1 问题/秒</option>
+                          <option value={120}>2 问题/秒</option>
+                          <option value={180}>3 问题/秒</option>
+                          <option value={300}>5 问题/秒</option>
+                          <option value={600}>10 问题/秒</option>
+                          <option value={1200}>20 问题/秒</option>
+                        </>
+                      ) : (
+                        <>
+                          <option value={10}>10 请求/分钟</option>
+                          <option value={30}>30 请求/分钟</option>
+                          <option value={60}>60 请求/分钟</option>
+                          <option value={120}>120 请求/分钟</option>
+                          <option value={180}>180 请求/分钟</option>
+                          <option value={300}>300 请求/分钟</option>
+                        </>
+                      )}
                     </select>
                   </div>
 
@@ -727,7 +739,7 @@ export function TestPage() {
                     {executionMode === 'parallel' && ` (并发数: ${maxConcurrency})`}
                   </p>
                   <p className="text-sm text-text-secondary">
-                    <span className="font-medium">速率限制:</span> {rpm} RPM
+                    <span className="font-medium">请求速率:</span> {executionMode === 'parallel' ? `${rpm / 60} 问题/秒` : `${rpm} RPM`}
                   </p>
                   <p className="text-sm text-text-secondary">
                     <span className="font-medium">会话用户ID:</span> {customUserId || '自动生成'}
@@ -970,8 +982,10 @@ export function TestPage() {
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-text-secondary">速率限制:</span>
-                        <span className="font-medium text-text-primary">{rpm} RPM</span>
+                        <span className="text-text-secondary">请求速率:</span>
+                        <span className="font-medium text-text-primary">
+                          {executionMode === 'parallel' ? `${rpm / 60} 问题/秒` : `${rpm} RPM`}
+                        </span>
                       </div>
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-text-secondary">会话用户ID:</span>
