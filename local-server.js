@@ -465,8 +465,29 @@ function parseExcelFile(filePath) {
   return { questions, referenceOutputs };
 }
 
+// Helper: Create fetch with timeout
+async function fetchWithTimeout(url, options, timeoutMs = 60000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error(`请求超时 (${timeoutMs / 1000}秒)`);
+    }
+    throw error;
+  }
+}
+
 // Helper: Call Agent API
-async function callAgentAPI(apiKey, region, question, customBaseUrl, customUserId) {
+async function callAgentAPI(apiKey, region, question, customBaseUrl, customUserId, timeoutMs = 60000) {
   const startTime = Date.now();
   
   try {
@@ -475,15 +496,15 @@ async function callAgentAPI(apiKey, region, question, customBaseUrl, customUserI
     // Use custom user_id if provided, otherwise generate default
     const userId = customUserId || ('test_user_' + Date.now());
 
-    // Step 1: Create conversation
-    const conversationResponse = await fetch(`${baseUrl}/v1/conversation`, {
+    // Step 1: Create conversation (10s timeout for this quick step)
+    const conversationResponse = await fetchWithTimeout(`${baseUrl}/v1/conversation`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({ user_id: userId }),
-    });
+    }, 10000);
 
     if (!conversationResponse.ok) {
       const errorData = await conversationResponse.json().catch(() => ({}));
@@ -497,8 +518,8 @@ async function callAgentAPI(apiKey, region, question, customBaseUrl, customUserI
     const conversationData = await conversationResponse.json();
     const conversationId = conversationData.conversation_id;
 
-    // Step 2: Send message
-    const messageResponse = await fetch(`${baseUrl}/v2/conversation/message`, {
+    // Step 2: Send message (use full timeout for AI response)
+    const messageResponse = await fetchWithTimeout(`${baseUrl}/v2/conversation/message`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -509,7 +530,7 @@ async function callAgentAPI(apiKey, region, question, customBaseUrl, customUserI
         response_mode: 'blocking',
         messages: [{ role: 'user', content: [{ type: 'text', text: question }] }],
       }),
-    });
+    }, timeoutMs);
 
     const responseTime = Date.now() - startTime;
 
