@@ -159,6 +159,38 @@ function generateMarkdownReport(data) {
   return markdown;
 }
 
+function generateMarkdownReportEn(data) {
+  let markdown = `# Agent API Test Report\n\n`;
+  markdown += `**Agent Name**: ${data.agentName}\n`;
+  markdown += `**Test Date**: ${data.testDate}\n`;
+  markdown += `**RPM**: ${data.rpm}\n\n`;
+
+  markdown += `## Summary\n\n`;
+  markdown += `| Metric | Value |\n`;
+  markdown += `|--------|-------|\n`;
+  markdown += `| Total Questions | ${data.totalQuestions} |\n`;
+  markdown += `| Passed | ${data.passedCount} |\n`;
+  markdown += `| Failed | ${data.failedCount} |\n`;
+  markdown += `| Success Rate | ${data.successRate}% |\n`;
+  markdown += `| Avg Response Time | ${data.avgResponseTime}ms |\n`;
+  markdown += `| Duration | ${data.durationSeconds}s |\n\n`;
+
+  markdown += `## Detailed Results\n\n`;
+  data.results.forEach((r, index) => {
+    markdown += `### Question ${index + 1}\n\n`;
+    markdown += `**Question**: ${r.question}\n\n`;
+    if (r.referenceOutput) {
+      markdown += `**Reference Answer**: ${r.referenceOutput}\n\n`;
+    }
+    markdown += `**Actual Output**: ${r.response || r.error}\n\n`;
+    markdown += `**Status**: ${r.success ? '✅ Passed' : '❌ Failed'}\n\n`;
+    markdown += `**Response Time**: ${r.responseTime}ms\n\n`;
+    markdown += `---\n\n`;
+  });
+
+  return markdown;
+}
+
 function generateExcelReport(data) {
   const rows = data.results.map((r, index) => ({
     '序号': index + 1,
@@ -258,6 +290,7 @@ async function runTest(excelPath, rpm = 60) {
 
   // Generate reports
   const markdownReport = generateMarkdownReport(testData);
+  const markdownReportEn = generateMarkdownReportEn(testData);
   const excelReport = generateExcelReport(testData);
 
   // Save to local directory
@@ -268,9 +301,11 @@ async function runTest(excelPath, rpm = 60) {
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const mdPath = `${outputDir}/test_report_${timestamp}.md`;
+  const mdEnPath = `${outputDir}/test_report_${timestamp}_en.md`;
   const xlsxPath = `${outputDir}/test_report_${timestamp}.xlsx`;
 
   fs.writeFileSync(mdPath, markdownReport);
+  fs.writeFileSync(mdEnPath, markdownReportEn);
   fs.writeFileSync(xlsxPath, excelReport);
 
   console.log('📊 测试汇总:');
@@ -283,6 +318,7 @@ async function runTest(excelPath, rpm = 60) {
 
   console.log('📁 报告已保存到:');
   console.log(`   - ${mdPath}`);
+  console.log(`   - ${mdEnPath}`);
   console.log(`   - ${xlsxPath}\n`);
 }
 

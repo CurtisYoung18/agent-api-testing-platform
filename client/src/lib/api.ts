@@ -107,11 +107,12 @@ export const historyApi = {
   getMultiple: (ids: number[]) => 
     Promise.all(ids.map(id => api.get<TestHistory>(`/history/${id}`).then((res) => res.data))),
   delete: (id: number) => api.delete(`/history/${id}`).then((res) => res.data),
-  download: (id: number, format: 'excel' | 'markdown' | 'json') => {
+  download: (id: number, format: 'excel' | 'markdown' | 'markdown-en' | 'json') => {
     const url = `/api/download?id=${id}&format=${format}`;
     const link = document.createElement('a');
     link.href = url;
-    link.download = `test_report_${id}.${format === 'markdown' ? 'md' : format === 'excel' ? 'xlsx' : 'json'}`;
+    const suffix = format === 'markdown' ? '.md' : format === 'markdown-en' ? '_en.md' : format === 'excel' ? '.xlsx' : '.json';
+    link.download = `test_report_${id}${suffix}`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

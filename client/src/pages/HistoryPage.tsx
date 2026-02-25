@@ -70,7 +70,7 @@ export function HistoryPage() {
     },
   })
 
-  const handleDownload = (id: number, format: 'excel' | 'markdown' | 'json') => {
+  const handleDownload = (id: number, format: 'excel' | 'markdown' | 'markdown-en' | 'json') => {
     try {
       historyApi.download(id, format)
     } catch (error) {
@@ -298,6 +298,14 @@ export function HistoryPage() {
                   >
                     <DocumentTextIcon className="w-4 h-4" />
                     <span>MD</span>
+                  </button>
+                  <button 
+                    onClick={() => handleDownload(record.id, 'markdown-en')}
+                    className="btn-outline py-1 px-3 text-sm flex items-center space-x-1"
+                    title="下载 Markdown 报告 (英文)"
+                  >
+                    <DocumentTextIcon className="w-4 h-4" />
+                    <span>MD EN</span>
                   </button>
                   <button 
                     onClick={() => handleDownload(record.id, 'json')}
@@ -557,6 +565,13 @@ export function HistoryPage() {
                 >
                   <DocumentTextIcon className="w-5 h-5" />
                   <span>下载 Markdown</span>
+                </button>
+                <button
+                  onClick={() => handleDownload(selectedRecord.id, 'markdown-en')}
+                  className="btn-outline flex items-center space-x-2"
+                >
+                  <DocumentTextIcon className="w-5 h-5" />
+                  <span>下载 Markdown (EN)</span>
                 </button>
                 <button
                   onClick={() => handleDownload(selectedRecord.id, 'json')}

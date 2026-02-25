@@ -392,6 +392,58 @@ function generateMarkdownReport(data) {
   return markdown;
 }
 
+// Generate Markdown report (English)
+function generateMarkdownReportEn(data) {
+  let markdown = `# Agent API Test Report\n\n`;
+  markdown += `**Agent Name**: ${data.agentName}\n`;
+  markdown += `**Test Date**: ${data.testDate}\n`;
+  markdown += `**Execution Mode**: ${data.executionMode === 'parallel' ? 'Parallel' : 'Sequential'}\n`;
+  if (data.executionMode === 'parallel') {
+    markdown += `**Concurrency**: ${data.maxConcurrency || 2}\n`;
+  } else {
+    markdown += `**Request Interval**: ${data.requestDelay || 0}ms\n`;
+  }
+  if (data.retriedCount > 0) {
+    markdown += `**Retried Questions**: ${data.retriedCount}\n`;
+  }
+  markdown += `\n`;
+
+  markdown += `## Summary\n\n`;
+  markdown += `| Metric | Value |\n`;
+  markdown += `|--------|-------|\n`;
+  markdown += `| Total Questions | ${data.totalQuestions} |\n`;
+  markdown += `| Passed | ${data.passedCount} |\n`;
+  markdown += `| Failed | ${data.failedCount} |\n`;
+  markdown += `| Success Rate | ${data.successRate}% |\n`;
+  markdown += `| Avg Response Time | ${data.avgResponseTime}ms |\n`;
+  markdown += `| Duration | ${data.durationSeconds}s |\n`;
+  markdown += `| Token Usage | ${data.totalTokens || 0} |\n`;
+  markdown += `| Total Cost | $${(data.totalCost || 0).toFixed(4)} |\n`;
+  if (data.retriedCount > 0) {
+    markdown += `| Retried & Passed | ${data.retriedCount} |\n`;
+  }
+  markdown += `\n`;
+
+  markdown += `## Detailed Results\n\n`;
+  data.results.forEach((r, index) => {
+    const retryBadge = r.retryCount > 0 ? ` 🔄 (Passed after ${r.retryCount} retries)` : '';
+    markdown += `### Question ${index + 1}${retryBadge}\n\n`;
+    markdown += `**Question**: ${r.question}\n\n`;
+    if (r.referenceOutput) {
+      markdown += `**Reference Answer**: ${r.referenceOutput}\n\n`;
+    }
+    markdown += `**Actual Output**: ${r.response || r.error}\n\n`;
+    markdown += `**Status**: ${r.success ? '✅ Passed' : '❌ Failed'}${retryBadge}\n\n`;
+    markdown += `**Response Time**: ${r.responseTime}ms\n\n`;
+    if (r.tokens) {
+      markdown += `**Token Usage**: ${r.tokens}\n\n`;
+    }
+    markdown += `---\n\n`;
+  });
+
+  return markdown;
+}
+
 // Generate Excel report
 function generateExcelReport(data) {
   const rows = data.results.map((r, index) => ({
@@ -449,6 +501,7 @@ function saveTestToHistory(testData) {
     // Store results and reports
     results: testData.results,
     markdownReport: generateMarkdownReport(testData),
+    markdownReportEn: generateMarkdownReportEn(testData),
     excelReport: generateExcelReport(testData),
   };
   
@@ -818,9 +871,11 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
       
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
       const mdPath = `${outputDir}/test_report_${timestamp}.md`;
+      const mdEnPath = `${outputDir}/test_report_${timestamp}_en.md`;
       const xlsxPath = `${outputDir}/test_report_${timestamp}.xlsx`;
       
       fs.writeFileSync(mdPath, historyEntry.markdownReport);
+      fs.writeFileSync(mdEnPath, historyEntry.markdownReportEn);
       fs.writeFileSync(xlsxPath, historyEntry.excelReport);
       
       console.log(`\n📁 报告已自动保存到:`);
@@ -915,13 +970,16 @@ app.post('/api/tests/save', express.json({ limit: '50mb' }), async (req, res) =>
     
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const mdPath = `${outputDir}/test_report_${timestamp}.md`;
+    const mdEnPath = `${outputDir}/test_report_${timestamp}_en.md`;
     const xlsxPath = `${outputDir}/test_report_${timestamp}.xlsx`;
     
     fs.writeFileSync(mdPath, historyEntry.markdownReport);
+    fs.writeFileSync(mdEnPath, historyEntry.markdownReportEn);
     fs.writeFileSync(xlsxPath, historyEntry.excelReport);
     
     console.log(`\n📁 报告已自动保存到:`);
     console.log(`   - Markdown: ${mdPath}`);
+    console.log(`   - Markdown (EN): ${mdEnPath}`);
     console.log(`   - Excel: ${xlsxPath}`);
 
     console.log(`[save] Saved test with ${results.length} results (${retriedCount} retried), history #${historyEntry.id}`);
@@ -1328,6 +1386,29 @@ app.get('/api/download', (req, res) => {
       res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="test_report_${id}.md"`);
       res.send(history.markdownReport);
+      break;
+      
+    case 'markdown-en':
+      res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="test_report_${id}_en.md"`);
+      const mdEn = history.markdownReportEn || generateMarkdownReportEn({
+        agentName: history.agentName,
+        testDate: history.testDate,
+        executionMode: history.executionMode,
+        maxConcurrency: history.maxConcurrency,
+        requestDelay: history.requestDelay,
+        retriedCount: history.retriedCount,
+        totalQuestions: history.totalQuestions,
+        passedCount: history.passedCount,
+        failedCount: history.failedCount,
+        successRate: history.successRate,
+        avgResponseTime: history.avgResponseTime,
+        durationSeconds: history.durationSeconds,
+        totalTokens: history.totalTokens,
+        totalCost: history.totalCost,
+        results: history.results,
+      });
+      res.send(mdEn);
       break;
       
     case 'excel':
