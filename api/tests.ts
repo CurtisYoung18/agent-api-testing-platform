@@ -453,9 +453,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const agentId = fields.agentId?.[0];
     const executionMode = (fields.executionMode?.[0] || 'sequential') as string;
     const rpm = parseInt(fields.rpm?.[0] || '60', 10);
+    const maxConcurrency = parseInt(fields.maxConcurrency?.[0] || '2', 10);
+    const requestDelay = parseInt(fields.requestDelay?.[0] || '0', 10);
     const file = files.file?.[0];
 
-    console.log('Request params:', { agentId, executionMode, rpm, hasFile: !!file, wantsStream });
+    console.log('Request params:', { agentId, executionMode, rpm, maxConcurrency, requestDelay, hasFile: !!file, wantsStream });
 
     if (!agentId || !file) {
       console.error('Missing required fields');
@@ -526,14 +528,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ...testResults,
       executionMode,
       rpm,
+      maxConcurrency,
+      requestDelay,
     };
 
-    // Generate reports
+    // If there are failures, don't save yet - wait for user to retry or confirm (like local-server)
+    if (testResults.failedCount > 0) {
+      console.log(`Test completed with ${testResults.failedCount} failures, waiting for retry or confirm`);
+      const completeData = {
+        type: 'complete',
+        pendingSave: true,
+        failedCount: testResults.failedCount,
+        passedCount: testResults.passedCount,
+        successRate: testResults.successRate.toFixed(2),
+        durationSeconds: testResults.durationSeconds,
+        avgResponseTime: testResults.avgResponseTime,
+        totalTokens: testResults.totalTokens,
+        totalCost: testResults.totalCost.toFixed(4),
+        results: testResults.results,
+        testConfig: {
+          agentId: agent.id,
+          agentName: agent.name,
+          executionMode,
+          maxConcurrency,
+          requestDelay,
+        },
+      };
+      if (wantsStream) {
+        res.write(`data: ${JSON.stringify(completeData)}\n\n`);
+        res.end();
+      } else {
+        return res.status(200).json(completeData);
+      }
+      return;
+    }
+
+    // All passed - generate reports and save to database
     console.log('Generating reports...');
     const excelBuffer = generateExcelReport(testData);
     const markdownContent = generateMarkdownReport(testData);
 
-    // Save to database
     console.log('Saving to database...');
     const insertResult = await pool.query(
       `INSERT INTO test_history (
