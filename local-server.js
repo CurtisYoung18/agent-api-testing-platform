@@ -811,16 +811,8 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
       // Calculate summary
       const passedCount = results.filter(r => r.success).length;
       const failedCount = results.length - passedCount;
-      const totalDuration = Date.now() - startTime;
-      const durationSeconds = Math.floor(totalDuration / 1000);
-      // 并行模式：单题等效耗时 = 总耗时/题数；串行模式：用实际API耗时
-      const avgResponseTime = isParallel
-        ? Math.round(totalDuration / results.length)
-        : Math.round(results.reduce((sum, r) => sum + (r.responseTime || 0), 0) / results.length);
-      if (isParallel) {
-        const effectiveTime = Math.round(totalDuration / results.length);
-        results.forEach(r => { r.responseTime = effectiveTime; });
-      }
+      const durationSeconds = Math.floor((Date.now() - startTime) / 1000);
+      const avgResponseTime = Math.round(results.reduce((sum, r) => sum + (r.responseTime || 0), 0) / results.length);
       const successRate = (passedCount / results.length * 100).toFixed(2);
 
       // If there are failures, don't save yet - wait for user to retry or confirm

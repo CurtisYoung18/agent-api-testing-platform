@@ -357,16 +357,7 @@ async function executeTests(
 
   const totalDuration = Date.now() - startTime;
   const successRate = (passedCount / questions.length) * 100;
-  const rawAvgResponseTime = results.reduce((sum, r) => sum + r.responseTime, 0) / results.length;
-  // 并行模式：单题等效耗时 = 总耗时/题数（因多题同时请求）；串行模式：用实际API耗时
-  const avgResponseTime = executionMode === 'parallel'
-    ? Math.round(totalDuration / questions.length)
-    : Math.round(rawAvgResponseTime);
-  // 并行模式：每题的 responseTime 改为等效耗时，便于理解
-  if (executionMode === 'parallel') {
-    const effectiveTimePerQuestion = Math.round(totalDuration / questions.length);
-    results.forEach((r: any) => { r.responseTime = effectiveTimePerQuestion; });
-  }
+  const avgResponseTime = Math.round(results.reduce((sum, r) => sum + r.responseTime, 0) / results.length);
 
   return {
     results,
