@@ -14,6 +14,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: '方法不允许' });
   }
 
+  // Health check (merged to reduce function count)
+  if (req.query.__health === '1') {
+    return res.json({ status: 'ok', timestamp: new Date().toISOString(), message: 'API运行正常' });
+  }
+
   const pool = getDbPool();
 
   try {

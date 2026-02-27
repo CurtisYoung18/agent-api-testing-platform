@@ -17,6 +17,10 @@
       "destination": "/api/download"
     },
     {
+      "source": "/api/health",
+      "destination": "/api/download?__health=1"
+    },
+    {
       "source": "/api/tests/stream",
       "destination": "/api/tests-stream"
     },
