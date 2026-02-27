@@ -8,21 +8,23 @@
 import XLSX from 'xlsx';
 import fs from 'fs';
 
-// 配置
+// 配置 - 可通过参数或修改此处切换 (totogroup 使用泰国站点 TH)
 const AGENT = {
-  id: 1,
-  name: 'mzt-QA',
-  model_name: 'MiniMax-M2',
-  region: 'CUSTOM',
-  api_key: 'app-m3goCK2a07T1FHYi9XVPnUug',
-  custom_base_url: 'http://27.156.118.33:40443',
+  id: 3,
+  name: 'totogroup',
+  model_name: 'gemeni 3 falsh',
+  region: 'TH',
+  api_key: 'app-0Cd6kL6RdPgric2mce6qbHLC',
+  custom_base_url: null,
 };
 
 function getBaseUrl(region, customBaseUrl) {
   if (region === 'CUSTOM' && customBaseUrl) {
     return customBaseUrl;
   }
-  return region === 'SG' ? 'https://api-sg.gptbots.ai' : 'https://api.gptbots.cn';
+  if (region === 'SG') return 'https://api-sg.gptbots.ai';
+  if (region === 'TH') return 'https://api-th.gptbots.ai';
+  return 'https://api.gptbots.cn';
 }
 
 function parseExcelFile(filePath) {

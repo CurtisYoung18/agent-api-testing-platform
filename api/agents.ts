@@ -45,7 +45,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: '缺少必填字段' });
       }
 
-      if (!['SG', 'CN', 'CUSTOM'].includes(region)) {
+      if (!['SG', 'TH', 'CN', 'CUSTOM'].includes(region)) {
         return res.status(400).json({ error: '无效的区域' });
       }
 

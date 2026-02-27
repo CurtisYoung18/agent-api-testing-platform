@@ -42,9 +42,9 @@ function getBaseUrl(region: string, customBaseUrl?: string | null): string {
   if (region === 'CUSTOM' && customBaseUrl) {
     return customBaseUrl;
   }
-  return region === 'SG' 
-    ? 'https://api-sg.gptbots.ai'
-    : 'https://api.gptbots.cn';
+  if (region === 'SG') return 'https://api-sg.gptbots.ai';
+  if (region === 'TH') return 'https://api-th.gptbots.ai';
+  return 'https://api.gptbots.cn';
 }
 
 // Call Agent API
@@ -121,16 +121,31 @@ async function callAgentAPI(apiKey: string, region: string, question: string, cu
 
     let responseText = '';
     if (messageData.output && Array.isArray(messageData.output) && messageData.output.length > 0) {
-      const firstOutput = messageData.output[0];
-      if (firstOutput.content && firstOutput.content.text) {
-        responseText = firstOutput.content.text;
+      for (const item of messageData.output) {
+        const content = item?.content;
+        if (!content) continue;
+        if (typeof content === 'string') {
+          responseText = content;
+          break;
+        }
+        if (content.text && typeof content.text === 'string') {
+          responseText = content.text;
+          break;
+        }
+        if (Array.isArray(content)) {
+          const textPart = content.find((c: any) => c?.type === 'text');
+          if (textPart?.text) {
+            responseText = textPart.text;
+            break;
+          }
+        }
       }
     }
 
     return {
       success: !!responseText,
       response: responseText || undefined,
-      error: responseText ? undefined : 'API返回了空响应',
+      error: responseText ? undefined : 'API返回了空响应 (output结构异常，请检查Agent配置)',
       responseTime,
       usage: messageData.usage || null,
     };

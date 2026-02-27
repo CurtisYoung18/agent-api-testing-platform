@@ -6,9 +6,9 @@ function getBaseUrl(region: string, customBaseUrl?: string | null): string {
   if (region === 'CUSTOM' && customBaseUrl) {
     return customBaseUrl;
   }
-  return region === 'SG' 
-    ? 'https://api-sg.gptbots.ai'
-    : 'https://api.gptbots.cn';
+  if (region === 'SG') return 'https://api-sg.gptbots.ai';
+  if (region === 'TH') return 'https://api-th.gptbots.ai';
+  return 'https://api.gptbots.cn';
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

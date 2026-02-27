@@ -34,9 +34,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const agent = agentResult.rows[0];
       const baseUrl = agent.region === 'CUSTOM' && agent.custom_base_url
         ? agent.custom_base_url
-        : agent.region === 'SG' 
+        : agent.region === 'SG'
           ? 'https://api-sg.gptbots.ai'
-          : 'https://api.gptbots.cn';
+          : agent.region === 'TH'
+            ? 'https://api-th.gptbots.ai'
+            : 'https://api.gptbots.cn';
 
       // Get bot_id from agent (assuming it's stored or we need to get it from GPTBots)
       // For now, we'll use the agent's API key to get conversations
@@ -100,9 +102,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const agent = agentResult.rows[0];
       const baseUrl = agent.region === 'CUSTOM' && agent.custom_base_url
         ? agent.custom_base_url
-        : agent.region === 'SG' 
+        : agent.region === 'SG'
           ? 'https://api-sg.gptbots.ai'
-          : 'https://api.gptbots.cn';
+          : agent.region === 'TH'
+            ? 'https://api-th.gptbots.ai'
+            : 'https://api.gptbots.cn';
 
       // Call GPTBots API to get messages
       const url = new URL(`${baseUrl}/v2/messages`);

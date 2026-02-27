@@ -66,9 +66,9 @@ function getBaseUrl(region, customBaseUrl) {
   if (region === 'CUSTOM' && customBaseUrl) {
     return customBaseUrl;
   }
-  return region === 'SG' 
-    ? 'https://api-sg.gptbots.ai'
-    : 'https://api.gptbots.cn';
+  if (region === 'SG') return 'https://api-sg.gptbots.ai';
+  if (region === 'TH') return 'https://api-th.gptbots.ai';
+  return 'https://api.gptbots.cn';
 }
 
 // GET /api/agents - 获取所有 agents

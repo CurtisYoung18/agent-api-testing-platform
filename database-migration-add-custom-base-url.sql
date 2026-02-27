@@ -6,7 +6,7 @@ ALTER TABLE agents ADD COLUMN IF NOT EXISTS custom_base_url VARCHAR(500);
 
 -- Update region constraint to allow 'CUSTOM'
 ALTER TABLE agents DROP CONSTRAINT IF EXISTS agents_region_check;
-ALTER TABLE agents ADD CONSTRAINT agents_region_check CHECK (region IN ('SG', 'CN', 'CUSTOM'));
+ALTER TABLE agents ADD CONSTRAINT agents_region_check CHECK (region IN ('SG', 'TH', 'CN', 'CUSTOM'));
 
 -- Verify the migration
 SELECT column_name, data_type, is_nullable 

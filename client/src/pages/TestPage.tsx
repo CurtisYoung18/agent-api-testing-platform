@@ -664,7 +664,7 @@ export function TestPage() {
                               )}
                               <span
                                 className={`px-2 py-1 text-xs rounded-full ${
-                                  agent.region === 'SG'
+                                  (agent.region === 'SG' || agent.region === 'TH')
                                     ? 'bg-blue-100 text-blue-700'
                                     : 'bg-green-100 text-green-700'
                                 }`}

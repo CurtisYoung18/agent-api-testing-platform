@@ -78,7 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         values.push(modelName || null);
       }
       if (region) {
-        if (!['SG', 'CN', 'CUSTOM'].includes(region)) {
+        if (!['SG', 'TH', 'CN', 'CUSTOM'].includes(region)) {
           return res.status(400).json({ error: '无效的区域' });
         }
         updates.push(`region = $${paramIndex++}`);

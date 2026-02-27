@@ -42,9 +42,9 @@ function getBaseUrl(region: string, customBaseUrl?: string | null): string {
   if (region === 'CUSTOM' && customBaseUrl) {
     return customBaseUrl;
   }
-  return region === 'SG' 
-    ? 'https://api-sg.gptbots.ai'
-    : 'https://api.gptbots.cn';
+  if (region === 'SG') return 'https://api-sg.gptbots.ai';
+  if (region === 'TH') return 'https://api-th.gptbots.ai';
+  return 'https://api.gptbots.cn';
 }
 
 // Call Agent API
@@ -70,15 +70,19 @@ async function callAgentAPI(apiKey: string, region: string, question: string, cu
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        user_id: 'test_user_' + Date.now()
+        user_id: 'test_user_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9)
       }),
     });
 
     if (!conversationResponse.ok) {
       const errorData = await conversationResponse.json().catch(() => ({}));
+      let errMsg = errorData.message || `创建对话失败 (${conversationResponse.status})`;
+      if (errorData.code === 40127) errMsg += ' [请检查API Key是否正确、是否在GPTBots「集成-API」页面创建]';
+      if (errorData.code === 40378) errMsg += ' [Agent已删除]';
+      if (errorData.code === 20055) errMsg += ' [请在GPTBots Agent设置中开启API功能]';
       return {
         success: false,
-        error: errorData.message || `创建对话失败 (${conversationResponse.status})`,
+        error: errMsg,
         responseTime: Date.now() - startTime,
       };
     }
@@ -117,9 +121,13 @@ async function callAgentAPI(apiKey: string, region: string, question: string, cu
 
     if (!messageResponse.ok) {
       const errorData = await messageResponse.json().catch(() => ({}));
+      let errMsg = errorData.message || `API调用失败 (${messageResponse.status})`;
+      if (errorData.code === 40127) errMsg += ' [请检查API Key]';
+      if (errorData.code === 40356) errMsg += ' [会话不存在]';
+      if (errorData.code === 20055) errMsg += ' [请在Agent设置中开启API功能]';
       return {
         success: false,
-        error: errorData.message || `API调用失败 (${messageResponse.status})`,
+        error: errMsg,
         responseTime,
         conversationId,
       };
@@ -129,16 +137,33 @@ async function callAgentAPI(apiKey: string, region: string, question: string, cu
 
     let responseText = '';
     if (messageData.output && Array.isArray(messageData.output) && messageData.output.length > 0) {
-      const firstOutput = messageData.output[0];
-      if (firstOutput.content && firstOutput.content.text) {
-        responseText = firstOutput.content.text;
+      for (const item of messageData.output) {
+        const content = item?.content;
+        if (!content) continue;
+        if (typeof content === 'string') {
+          responseText = content;
+          break;
+        }
+        if (content.text && typeof content.text === 'string') {
+          responseText = content.text;
+          break;
+        }
+        if (Array.isArray(content)) {
+          const textPart = content.find((c: any) => c?.type === 'text');
+          if (textPart?.text) {
+            responseText = textPart.text;
+            break;
+          }
+        }
       }
     }
 
     if (!responseText) {
+      const rawPreview = JSON.stringify(messageData).slice(0, 500);
+      console.error('[error] Empty API response. Raw messageData:', rawPreview);
       return {
         success: false,
-        error: 'API返回了空响应',
+        error: `API返回了空响应 (output结构异常，请检查Agent配置)`,
         responseTime,
         conversationId,
         messageId: messageData.message_id,
@@ -531,6 +556,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // If there are failures, don't save yet - wait for user to retry or confirm (like local-server)
     if (testResults.failedCount > 0) {
+      const firstFailure = testResults.results.find((r: any) => !r.success);
+      if (firstFailure) {
+        console.error('[error] First failure:', { question: firstFailure.question?.slice(0, 50), error: firstFailure.error });
+      }
       console.log(`Test completed with ${testResults.failedCount} failures, waiting for retry or confirm`);
       const completeData = {
         type: 'complete',

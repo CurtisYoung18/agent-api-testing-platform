@@ -98,7 +98,7 @@ export function AgentsPage() {
     setNewAgent({
       name: agent.name,
       modelName: agent.modelName || '',
-      region: agent.region as 'SG' | 'CN' | 'CUSTOM',
+      region: agent.region as 'SG' | 'TH' | 'CN' | 'CUSTOM',
       apiKey: '', // 不显示完整的API Key
       customBaseUrl: agent.customBaseUrl || '',
     })
@@ -135,7 +135,7 @@ export function AgentsPage() {
   }
 
   const getRegionIcon = (region: string) => {
-    return region === 'SG' ? <GlobeAsiaAustraliaIcon className="w-4 h-4" /> : <MapIcon className="w-4 h-4" />
+    return (region === 'SG' || region === 'TH') ? <GlobeAsiaAustraliaIcon className="w-4 h-4" /> : <MapIcon className="w-4 h-4" />
   }
 
   const filteredAgents = agents?.filter((agent) =>
@@ -383,11 +383,12 @@ export function AgentsPage() {
                   </label>
                   <select
                     value={newAgent.region}
-                    onChange={(e) => setNewAgent({ ...newAgent, region: e.target.value as 'SG' | 'CN' | 'CUSTOM', customBaseUrl: e.target.value === 'CUSTOM' ? newAgent.customBaseUrl : '' })}
+                    onChange={(e) => setNewAgent({ ...newAgent, region: e.target.value as 'SG' | 'TH' | 'CN' | 'CUSTOM', customBaseUrl: e.target.value === 'CUSTOM' ? newAgent.customBaseUrl : '' })}
                     className="input-field"
                     disabled={createMutation.isPending || updateMutation.isPending}
                   >
                     <option value="SG">新加坡 (SG)</option>
+                    <option value="TH">泰国 (TH)</option>
                     <option value="CN">中国 (CN)</option>
                     <option value="CUSTOM">自定义地址</option>
                   </select>
