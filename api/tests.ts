@@ -382,7 +382,7 @@ function generateExcelReport(data: any): Buffer {
     '状态': r.success ? '成功' : '失败',
     '响应时间(ms)': r.responseTime,
     'Token消耗': r.tokens || 0,
-    '成本': r.cost || 0,
+    '积分': r.cost || 0,
     '时间戳': r.timestamp,
   }));
 
@@ -394,7 +394,7 @@ function generateExcelReport(data: any): Buffer {
     '状态': `成功率: ${data.successRate.toFixed(2)}%`,
     '响应时间(ms)': `平均: ${data.avgResponseTime}ms`,
     'Token消耗': data.totalTokens,
-    '成本': data.totalCost.toFixed(4),
+    '积分': data.totalCost.toFixed(4),
     '时间戳': data.testDate.toISOString(),
   };
 
@@ -425,7 +425,9 @@ function generateMarkdownReport(data: any): string {
   markdown += `| 平均响应时间 | ${((data.avgResponseTime || 0) / 1000).toFixed(2)}s |\n`;
   markdown += `| 总耗时 | ${data.durationSeconds}s |\n`;
   markdown += `| Token消耗 | ${data.totalTokens} |\n`;
-  markdown += `| 总成本 | $${data.totalCost.toFixed(4)} |\n\n`;
+  markdown += `| 积分消耗 | ${data.totalCost.toFixed(4)} |\n`;
+  markdown += `| 总成本(USD) | $${(data.totalCost / 100).toFixed(4)} |\n`;
+  markdown += `| *换算* | *100积分=1美元 (GPTBots)* |\n\n`;
 
   markdown += `## 详细结果\n\n`;
   data.results.forEach((r: any, index: number) => {
@@ -438,6 +440,9 @@ function generateMarkdownReport(data: any): string {
     markdown += `**响应时间**: ${((r.responseTime || 0) / 1000).toFixed(2)}s\n\n`;
     if (r.tokens) {
       markdown += `**Token消耗**: ${r.tokens}\n\n`;
+    }
+    if (r.cost != null) {
+      markdown += `**积分**: ${r.cost.toFixed(4)}\n\n`;
     }
     markdown += `---\n\n`;
   });

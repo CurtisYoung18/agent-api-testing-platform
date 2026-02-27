@@ -40,7 +40,9 @@ function generateMarkdownReport(data: any): string {
   markdown += `| 平均响应时间 | ${((data.avgResponseTime || 0) / 1000).toFixed(2)}s |\n`;
   markdown += `| 总耗时 | ${data.durationSeconds}s |\n`;
   markdown += `| Token消耗 | ${data.totalTokens || 0} |\n`;
-  markdown += `| 总成本 | $${(data.totalCost || 0).toFixed(4)} |\n\n`;
+  markdown += `| 积分消耗 | ${(data.totalCost || 0).toFixed(4)} |\n`;
+  markdown += `| 总成本(USD) | $${((data.totalCost || 0) / 100).toFixed(4)} |\n`;
+  markdown += `| *换算* | *100积分=1美元 (GPTBots)* |\n\n`;
   markdown += `## 详细结果\n\n`;
   data.results.forEach((r: any, index: number) => {
     const retryBadge = r.retryCount > 0 ? ` 🔄 (重试${r.retryCount}次后成功)` : '';
@@ -50,6 +52,7 @@ function generateMarkdownReport(data: any): string {
     markdown += `**实际输出**: ${r.response || r.error}\n\n`;
     markdown += `**响应时间**: ${((r.responseTime || 0) / 1000).toFixed(2)}s\n\n`;
     if (r.tokens) markdown += `**Token消耗**: ${r.tokens}\n\n`;
+    if (r.cost != null) markdown += `**积分**: ${r.cost.toFixed(4)}\n\n`;
     markdown += `---\n\n`;
   });
   return markdown;
@@ -60,13 +63,13 @@ function generateExcelReport(data: any): Buffer {
     '序号': index + 1, '问题': r.question, '参考答案': r.referenceOutput || '',
     '实际输出': r.response || r.error, '状态': r.success ? '成功' : '失败',
     '重试次数': r.retryCount || 0, '响应时间(ms)': r.responseTime,
-    'Token消耗': r.tokens || 0, '成本': r.cost || 0, '时间戳': r.timestamp || new Date().toISOString(),
+    'Token消耗': r.tokens || 0, '积分': r.cost ?? 0, '时间戳': r.timestamp || new Date().toISOString(),
   }));
   rows.unshift({
     '序号': '汇总', '问题': `Agent: ${data.agentName}`, '参考答案': `总问题数: ${data.totalQuestions}`,
     '实际输出': `成功: ${data.passedCount}, 失败: ${data.failedCount}`, '状态': `成功率: ${data.successRate}%`,
     '响应时间(ms)': `平均: ${data.avgResponseTime}ms`, 'Token消耗': data.totalTokens || 0,
-    '成本': (data.totalCost || 0).toFixed(4), '时间戳': data.testDate,
+    '积分': (data.totalCost || 0).toFixed(4), '时间戳': data.testDate,
   });
   const worksheet = XLSX.utils.json_to_sheet(rows);
   const workbook = XLSX.utils.book_new();

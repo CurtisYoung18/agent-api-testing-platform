@@ -16,7 +16,9 @@ function generateMarkdownReportEn(data: any): string {
   md += `| Avg Response Time | ${fmtSec(data.avgResponseTime || 0)} |\n`;
   md += `| Duration | ${data.durationSeconds}s |\n`;
   md += `| Token Usage | ${data.totalTokens || 0} |\n`;
-  md += `| Total Cost | $${(data.totalCost || 0).toFixed(4)} |\n\n`;
+  md += `| Credits | ${(data.totalCost || 0).toFixed(4)} |\n`;
+  md += `| Total USD Cost | $${((data.totalCost || 0) / 100).toFixed(4)} |\n`;
+  md += `| *Conversion* | *100 credits = 1 USD (GPTBots)* |\n\n`;
   md += `## Detailed Results\n\n`;
   data.results.forEach((r: any, i: number) => {
     md += `### Question ${i + 1}\n\n`;
@@ -25,6 +27,7 @@ function generateMarkdownReportEn(data: any): string {
     md += `**Actual Output**: ${r.response || r.error}\n\n`;
     md += `**Response Time**: ${fmtSec(r.responseTime || 0)}\n\n`;
     if (r.tokens) md += `**Token Usage**: ${r.tokens}\n\n`;
+    if (r.cost != null) md += `**Credits**: ${r.cost.toFixed(4)}\n\n`;
     md += `---\n\n`;
   });
   return md;

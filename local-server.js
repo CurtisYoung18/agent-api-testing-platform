@@ -366,7 +366,9 @@ function generateMarkdownReport(data) {
   markdown += `| 平均响应时间 | ${((data.avgResponseTime || 0) / 1000).toFixed(2)}s |\n`;
   markdown += `| 总耗时 | ${data.durationSeconds}s |\n`;
   markdown += `| Token消耗 | ${data.totalTokens || 0} |\n`;
-  markdown += `| 总成本 | $${(data.totalCost || 0).toFixed(4)} |\n`;
+  markdown += `| 积分消耗 | ${(data.totalCost || 0).toFixed(4)} |\n`;
+  markdown += `| 总成本(USD) | $${((data.totalCost || 0) / 100).toFixed(4)} |\n`;
+  markdown += `| *换算* | *100积分=1美元 (GPTBots)* |\n`;
   if (data.retriedCount > 0) {
     markdown += `| 重试成功数 | ${data.retriedCount} |\n`;
   }
@@ -384,6 +386,9 @@ function generateMarkdownReport(data) {
     markdown += `**响应时间**: ${((r.responseTime || 0) / 1000).toFixed(2)}s\n\n`;
     if (r.tokens) {
       markdown += `**Token消耗**: ${r.tokens}\n\n`;
+    }
+    if (r.cost != null) {
+      markdown += `**积分**: ${r.cost.toFixed(4)}\n\n`;
     }
     markdown += `---\n\n`;
   });
@@ -417,7 +422,9 @@ function generateMarkdownReportEn(data) {
   markdown += `| Avg Response Time | ${((data.avgResponseTime || 0) / 1000).toFixed(2)}s |\n`;
   markdown += `| Duration | ${data.durationSeconds}s |\n`;
   markdown += `| Token Usage | ${data.totalTokens || 0} |\n`;
-  markdown += `| Total Cost | $${(data.totalCost || 0).toFixed(4)} |\n`;
+  markdown += `| Credits | ${(data.totalCost || 0).toFixed(4)} |\n`;
+  markdown += `| Total USD Cost | $${((data.totalCost || 0) / 100).toFixed(4)} |\n`;
+  markdown += `| *Conversion* | *100 credits = 1 USD (GPTBots)* |\n`;
   if (data.retriedCount > 0) {
     markdown += `| Retried & Passed | ${data.retriedCount} |\n`;
   }
@@ -435,6 +442,9 @@ function generateMarkdownReportEn(data) {
     markdown += `**Response Time**: ${((r.responseTime || 0) / 1000).toFixed(2)}s\n\n`;
     if (r.tokens) {
       markdown += `**Token Usage**: ${r.tokens}\n\n`;
+    }
+    if (r.cost != null) {
+      markdown += `**Credits**: ${r.cost.toFixed(4)}\n\n`;
     }
     markdown += `---\n\n`;
   });
@@ -465,7 +475,7 @@ function generateExcelReport(data) {
     '状态': `成功率: ${data.successRate}%`,
     '响应时间(ms)': `平均: ${data.avgResponseTime}ms`,
     'Token消耗': data.totalTokens || 0,
-    '成本': (data.totalCost || 0).toFixed(4),
+    '积分': (data.totalCost || 0).toFixed(4),
     '时间戳': data.testDate,
   };
 

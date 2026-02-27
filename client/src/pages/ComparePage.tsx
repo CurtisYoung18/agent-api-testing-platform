@@ -383,10 +383,10 @@ export function ComparePage() {
                 ))}
               </tr>
               <tr className="border-b border-gray-100">
-                <td className="py-3 px-4 text-text-secondary">总成本</td>
+                <td className="py-3 px-4 text-text-secondary">积分消耗</td>
                 {histories.map((h, i) => (
                   <td key={i} className="py-3 px-4 text-text-primary">
-                    ${((h.jsonData as any)?.totalCost || 0).toFixed(4)}
+                    {((h.jsonData as any)?.totalCost || 0).toFixed(4)}
                   </td>
                 ))}
               </tr>

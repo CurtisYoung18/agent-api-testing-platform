@@ -106,10 +106,17 @@ async function callAgentAPI(apiKey, region, question, customBaseUrl) {
 
     let responseText = '';
     if (messageData.output && Array.isArray(messageData.output)) {
-      responseText = messageData.output
-        .map((o) => o.content?.text || '')
-        .filter((t) => t)
-        .join('\n');
+      const parts = [];
+      for (const o of messageData.output) {
+        const c = o.content;
+        if (!c) continue;
+        if (typeof c === 'string') { parts.push(c); continue; }
+        if (c.text) parts.push(c.text);
+        if (c.audio && Array.isArray(c.audio)) {
+          for (const a of c.audio) if (a.transcript) parts.push(a.transcript);
+        }
+      }
+      responseText = parts.filter(Boolean).join('\n');
     }
 
     return {
@@ -145,7 +152,9 @@ function generateMarkdownReport(data) {
   markdown += `| 平均响应时间 | ${((data.avgResponseTime || 0) / 1000).toFixed(2)}s |\n`;
   markdown += `| 总耗时 | ${data.durationSeconds}s |\n`;
   markdown += `| Token消耗 | ${data.totalTokens || 0} |\n`;
-  markdown += `| 总成本 | $${(data.totalCost || 0).toFixed(4)} |\n\n`;
+  markdown += `| 积分消耗 | ${(data.totalCost || 0).toFixed(4)} |\n`;
+  markdown += `| 总成本(USD) | $${((data.totalCost || 0) / 100).toFixed(4)} |\n`;
+  markdown += `| *换算* | *100积分=1美元 (GPTBots)* |\n\n`;
 
   markdown += `## 详细结果\n\n`;
   data.results.forEach((r, index) => {
@@ -157,7 +166,7 @@ function generateMarkdownReport(data) {
     markdown += `**实际输出**: ${r.response || r.error}\n\n`;
     markdown += `**响应时间**: ${((r.responseTime || 0) / 1000).toFixed(2)}s\n\n`;
     if (r.tokens) markdown += `**Token消耗**: ${r.tokens}\n\n`;
-    if (r.cost != null) markdown += `**成本**: $${r.cost.toFixed(4)}\n\n`;
+    if (r.cost != null) markdown += `**积分**: ${r.cost.toFixed(4)}\n\n`;
     markdown += `---\n\n`;
   });
 
@@ -180,7 +189,9 @@ function generateMarkdownReportEn(data) {
   markdown += `| Avg Response Time | ${((data.avgResponseTime || 0) / 1000).toFixed(2)}s |\n`;
   markdown += `| Duration | ${data.durationSeconds}s |\n`;
   markdown += `| Token Usage | ${data.totalTokens || 0} |\n`;
-  markdown += `| Total Cost | $${(data.totalCost || 0).toFixed(4)} |\n\n`;
+  markdown += `| Credits | ${(data.totalCost || 0).toFixed(4)} |\n`;
+  markdown += `| Total USD Cost | $${((data.totalCost || 0) / 100).toFixed(4)} |\n`;
+  markdown += `| *Conversion* | *100 credits = 1 USD (GPTBots)* |\n\n`;
 
   markdown += `## Detailed Results\n\n`;
   data.results.forEach((r, index) => {
@@ -189,10 +200,10 @@ function generateMarkdownReportEn(data) {
     if (r.referenceOutput) {
       markdown += `**Reference Answer**: ${r.referenceOutput}\n\n`;
     }
-    markdown += `**Actual Output**: ${r.response || r.error}\n\n`;
+    markdown += `**Actual Output**: ${(r.response != null && r.response !== '') ? r.response : (r.error || '(no response)')}\n\n`;
     markdown += `**Response Time**: ${((r.responseTime || 0) / 1000).toFixed(2)}s\n\n`;
     if (r.tokens) markdown += `**Token Usage**: ${r.tokens}\n\n`;
-    if (r.cost != null) markdown += `**Cost**: $${r.cost.toFixed(4)}\n\n`;
+    if (r.cost != null) markdown += `**Credits**: ${r.cost.toFixed(4)}\n\n`;
     markdown += `---\n\n`;
   });
 
@@ -208,7 +219,7 @@ function generateExcelReport(data) {
     '状态': r.success ? '成功' : '失败',
     '响应时间(ms)': r.responseTime,
     'Token消耗': r.tokens || 0,
-    '成本': r.cost != null ? r.cost.toFixed(4) : 0,
+    '积分': r.cost != null ? r.cost.toFixed(4) : 0,
   }));
 
   const summaryRow = {
@@ -219,7 +230,7 @@ function generateExcelReport(data) {
     '状态': `成功率: ${data.successRate}%`,
     '响应时间(ms)': `平均: ${data.avgResponseTime}ms`,
     'Token消耗': data.totalTokens || 0,
-    '成本': (data.totalCost || 0).toFixed(4),
+    '积分': (data.totalCost || 0).toFixed(4),
   };
 
   rows.unshift(summaryRow);
@@ -229,6 +240,21 @@ function generateExcelReport(data) {
   XLSX.utils.book_append_sheet(workbook, worksheet, '测试报告');
 
   return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+}
+
+function saveReports(testData, suffix = '') {
+  const outputDir = './test_output';
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const mdPath = `${outputDir}/test_report_${timestamp}${suffix}.md`;
+  const mdEnPath = `${outputDir}/test_report_${timestamp}${suffix}_en.md`;
+  const xlsxPath = `${outputDir}/test_report_${timestamp}${suffix}.xlsx`;
+  fs.writeFileSync(mdPath, generateMarkdownReport(testData));
+  fs.writeFileSync(mdEnPath, generateMarkdownReportEn(testData));
+  fs.writeFileSync(xlsxPath, generateExcelReport(testData));
+  return { mdPath, mdEnPath, xlsxPath };
 }
 
 async function runTest(excelPath, rpm = 60) {
@@ -245,37 +271,68 @@ async function runTest(excelPath, rpm = 60) {
   const delay = 60000 / rpm;
   const results = [];
 
-  for (let i = 0; i < questions.length; i++) {
-    const question = questions[i];
-    const refOutput = referenceOutputs[i] || '';
+  try {
+    for (let i = 0; i < questions.length; i++) {
+      const question = questions[i];
+      const refOutput = referenceOutputs[i] || '';
 
-    process.stdout.write(`\r⏳ 进度: ${i + 1}/${questions.length} - ${question.slice(0, 40)}...`);
+      process.stdout.write(`\r⏳ 进度: ${i + 1}/${questions.length} - ${question.slice(0, 40)}...`);
 
-    const result = await callAgentAPI(
-      AGENT.api_key,
-      AGENT.region,
-      question,
-      AGENT.custom_base_url
-    );
+      const result = await callAgentAPI(
+        AGENT.api_key,
+        AGENT.region,
+        question,
+        AGENT.custom_base_url
+      );
 
-    results.push({
-      question,
-      referenceOutput: refOutput,
-      response: result.response || '',
-      success: result.success,
-      error: result.error,
-      responseTime: result.responseTime,
-      tokens: result.usage?.tokens?.total_tokens || 0,
-      cost: result.usage?.credits?.total_credits || 0,
-      conversationId: result.conversationId,
-      messageId: result.messageId,
-      timestamp: new Date().toISOString(),
-    });
+      results.push({
+        question,
+        referenceOutput: refOutput,
+        response: result.response || '',
+        success: result.success,
+        error: result.error,
+        responseTime: result.responseTime,
+        tokens: result.usage?.tokens?.total_tokens || 0,
+        cost: result.usage?.credits?.total_credits || 0,
+        conversationId: result.conversationId,
+        messageId: result.messageId,
+        timestamp: new Date().toISOString(),
+      });
 
-    // Rate limiting
-    if (i < questions.length - 1) {
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      // Rate limiting
+      if (i < questions.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
     }
+  } catch (err) {
+    console.error('\n\n❌ 测试中途出错:', err.message);
+    if (results.length > 0) {
+      const passedCount = results.filter((r) => r.success).length;
+      const durationSeconds = Math.floor((Date.now() - startTime) / 1000);
+      const avgResponseTime = Math.round(results.reduce((sum, r) => sum + (r.responseTime || 0), 0) / results.length);
+      const totalTokens = results.reduce((sum, r) => sum + (r.tokens || 0), 0);
+      const totalCost = results.reduce((sum, r) => sum + (r.cost || 0), 0);
+      const testData = {
+        agentName: AGENT.name,
+        totalQuestions: results.length,
+        passedCount,
+        failedCount: results.length - passedCount,
+        successRate: ((passedCount / results.length) * 100).toFixed(2),
+        durationSeconds,
+        avgResponseTime,
+        totalTokens,
+        totalCost,
+        rpm,
+        testDate: new Date().toISOString(),
+        results,
+      };
+      const paths = saveReports(testData, '_partial');
+      console.log(`\n📁 已保存已测试的 ${results.length} 条结果到:`);
+      console.log(`   - ${paths.mdPath}`);
+      console.log(`   - ${paths.mdEnPath}`);
+      console.log(`   - ${paths.xlsxPath}\n`);
+    }
+    throw err;
   }
 
   console.log('\n\n✅ 测试完成!\n');
@@ -306,25 +363,7 @@ async function runTest(excelPath, rpm = 60) {
     results,
   };
 
-  // Generate reports
-  const markdownReport = generateMarkdownReport(testData);
-  const markdownReportEn = generateMarkdownReportEn(testData);
-  const excelReport = generateExcelReport(testData);
-
-  // Save to local directory
-  const outputDir = './test_output';
-  if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir, { recursive: true });
-  }
-
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const mdPath = `${outputDir}/test_report_${timestamp}.md`;
-  const mdEnPath = `${outputDir}/test_report_${timestamp}_en.md`;
-  const xlsxPath = `${outputDir}/test_report_${timestamp}.xlsx`;
-
-  fs.writeFileSync(mdPath, markdownReport);
-  fs.writeFileSync(mdEnPath, markdownReportEn);
-  fs.writeFileSync(xlsxPath, excelReport);
+  const paths = saveReports(testData);
 
   console.log('📊 测试汇总:');
   console.log(`   总问题数: ${results.length}`);
@@ -334,12 +373,12 @@ async function runTest(excelPath, rpm = 60) {
   console.log(`   总耗时: ${durationSeconds}s`);
   console.log(`   平均响应时间: ${avgResponseTime}ms`);
   console.log(`   Token消耗: ${totalTokens}`);
-  console.log(`   总成本: $${totalCost.toFixed(4)}\n`);
+  console.log(`   积分消耗: ${totalCost.toFixed(4)}\n`);
 
   console.log('📁 报告已保存到:');
-  console.log(`   - ${mdPath}`);
-  console.log(`   - ${mdEnPath}`);
-  console.log(`   - ${xlsxPath}\n`);
+  console.log(`   - ${paths.mdPath}`);
+  console.log(`   - ${paths.mdEnPath}`);
+  console.log(`   - ${paths.xlsxPath}\n`);
 }
 
 // Main
