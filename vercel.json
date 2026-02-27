@@ -21,6 +21,14 @@
       "destination": "/api/tests-stream"
     },
     {
+      "source": "/api/tests/save",
+      "destination": "/api/tests-actions?action=save"
+    },
+    {
+      "source": "/api/tests/retry",
+      "destination": "/api/tests-actions?action=retry"
+    },
+    {
       "source": "/api/tests",
       "destination": "/api/tests"
     },
