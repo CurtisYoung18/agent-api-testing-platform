@@ -81,14 +81,17 @@ async function handleSave(req: VercelRequest, res: VercelResponse) {
   }
   const passedCount = results.filter((r: any) => r.success).length;
   const failedCount = results.length - passedCount;
-  const avgResponseTime = Math.round(results.reduce((sum: number, r: any) => sum + (r.responseTime || 0), 0) / results.length);
-  const successRate = (passedCount / results.length * 100).toFixed(2);
+  const avgResponseTime = results.length > 0 ? Math.round(results.reduce((sum: number, r: any) => sum + (r.responseTime || 0), 0) / results.length) : 0;
+  const successRate = results.length > 0 ? (passedCount / results.length * 100).toFixed(2) : '0.00';
   const retriedCount = results.filter((r: any) => r.retryCount && r.retryCount > 0).length;
+  // 从 results 汇总 tokens/cost，确保重试后的数据准确
+  const computedTotalTokens = results.reduce((sum: number, r: any) => sum + (r.tokens || 0), 0);
+  const computedTotalCost = results.reduce((sum: number, r: any) => sum + (r.cost || 0), 0);
   const testData = {
     agentId: testConfig.agentId, agentName: testConfig.agentName, totalQuestions: results.length,
     passedCount, failedCount, successRate, durationSeconds: durationSeconds || 0, avgResponseTime,
     executionMode: testConfig.executionMode || 'sequential', maxConcurrency: testConfig.maxConcurrency || 2,
-    requestDelay: testConfig.requestDelay || 0, totalTokens: totalTokens || 0, totalCost: totalCost || 0,
+    requestDelay: testConfig.requestDelay || 0, totalTokens: computedTotalTokens || totalTokens || 0, totalCost: computedTotalCost || totalCost || 0,
     testDate: new Date().toISOString(), results: results.map((r: any) => ({ ...r, retryCount: r.retryCount || 0 })), retriedCount,
   };
   const markdownContent = generateMarkdownReport(testData);
@@ -161,7 +164,9 @@ async function handleRetry(req: VercelRequest, res: VercelResponse) {
   const results: any[] = [];
   const processQuestion = async (q: any) => {
     const r = await callAgentAPI(agent.api_key, agent.region, q.question, agent.custom_base_url, userId);
-    return { type: 'result', questionIndex: q.questionIndex, question: q.question, referenceOutput: q.referenceOutput || '', response: r.response || '', success: r.success, error: r.error, responseTime: r.responseTime, conversationId: r.conversationId, messageId: r.messageId, isRetry: true, timestamp: new Date().toISOString() };
+    const tokens = r.success && r.usage?.tokens ? (r.usage.tokens.total_tokens || 0) : 0;
+    const cost = r.success && r.usage?.credits ? (r.usage.credits.total_credits || 0) : 0;
+    return { type: 'result', questionIndex: q.questionIndex, question: q.question, referenceOutput: q.referenceOutput || '', response: r.response || '', success: r.success, error: r.error, responseTime: r.responseTime, tokens, cost, conversationId: r.conversationId, messageId: r.messageId, isRetry: true, timestamp: new Date().toISOString() };
   };
   if (isParallel) {
     for (let i = 0; i < questions.length; i += concurrency) {

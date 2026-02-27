@@ -144,7 +144,8 @@ function generateMarkdownReport(data) {
   markdown += `| 成功率 | ${data.successRate}% |\n`;
   markdown += `| 平均响应时间 | ${((data.avgResponseTime || 0) / 1000).toFixed(2)}s |\n`;
   markdown += `| 总耗时 | ${data.durationSeconds}s |\n`;
-  markdown += `| Token消耗 | ${data.totalTokens || 0} |\n\n`;
+  markdown += `| Token消耗 | ${data.totalTokens || 0} |\n`;
+  markdown += `| 总成本 | $${(data.totalCost || 0).toFixed(4)} |\n\n`;
 
   markdown += `## 详细结果\n\n`;
   data.results.forEach((r, index) => {
@@ -156,6 +157,7 @@ function generateMarkdownReport(data) {
     markdown += `**实际输出**: ${r.response || r.error}\n\n`;
     markdown += `**响应时间**: ${((r.responseTime || 0) / 1000).toFixed(2)}s\n\n`;
     if (r.tokens) markdown += `**Token消耗**: ${r.tokens}\n\n`;
+    if (r.cost != null) markdown += `**成本**: $${r.cost.toFixed(4)}\n\n`;
     markdown += `---\n\n`;
   });
 
@@ -177,7 +179,8 @@ function generateMarkdownReportEn(data) {
   markdown += `| Success Rate | ${data.successRate}% |\n`;
   markdown += `| Avg Response Time | ${((data.avgResponseTime || 0) / 1000).toFixed(2)}s |\n`;
   markdown += `| Duration | ${data.durationSeconds}s |\n`;
-  markdown += `| Token Usage | ${data.totalTokens || 0} |\n\n`;
+  markdown += `| Token Usage | ${data.totalTokens || 0} |\n`;
+  markdown += `| Total Cost | $${(data.totalCost || 0).toFixed(4)} |\n\n`;
 
   markdown += `## Detailed Results\n\n`;
   data.results.forEach((r, index) => {
@@ -189,6 +192,7 @@ function generateMarkdownReportEn(data) {
     markdown += `**Actual Output**: ${r.response || r.error}\n\n`;
     markdown += `**Response Time**: ${((r.responseTime || 0) / 1000).toFixed(2)}s\n\n`;
     if (r.tokens) markdown += `**Token Usage**: ${r.tokens}\n\n`;
+    if (r.cost != null) markdown += `**Cost**: $${r.cost.toFixed(4)}\n\n`;
     markdown += `---\n\n`;
   });
 
@@ -203,6 +207,8 @@ function generateExcelReport(data) {
     '实际输出': r.response || r.error,
     '状态': r.success ? '成功' : '失败',
     '响应时间(ms)': r.responseTime,
+    'Token消耗': r.tokens || 0,
+    '成本': r.cost != null ? r.cost.toFixed(4) : 0,
   }));
 
   const summaryRow = {
@@ -212,6 +218,8 @@ function generateExcelReport(data) {
     '实际输出': `成功: ${data.passedCount}, 失败: ${data.failedCount}`,
     '状态': `成功率: ${data.successRate}%`,
     '响应时间(ms)': `平均: ${data.avgResponseTime}ms`,
+    'Token消耗': data.totalTokens || 0,
+    '成本': (data.totalCost || 0).toFixed(4),
   };
 
   rows.unshift(summaryRow);
@@ -258,6 +266,7 @@ async function runTest(excelPath, rpm = 60) {
       error: result.error,
       responseTime: result.responseTime,
       tokens: result.usage?.tokens?.total_tokens || 0,
+      cost: result.usage?.credits?.total_credits || 0,
       conversationId: result.conversationId,
       messageId: result.messageId,
       timestamp: new Date().toISOString(),
@@ -275,11 +284,12 @@ async function runTest(excelPath, rpm = 60) {
   const passedCount = results.filter((r) => r.success).length;
   const failedCount = results.length - passedCount;
   const durationSeconds = Math.floor((Date.now() - startTime) / 1000);
-  const avgResponseTime = Math.round(
-    results.reduce((sum, r) => sum + (r.responseTime || 0), 0) / results.length
-  );
-  const successRate = ((passedCount / results.length) * 100).toFixed(2);
+  const avgResponseTime = results.length > 0
+    ? Math.round(results.reduce((sum, r) => sum + (r.responseTime || 0), 0) / results.length)
+    : 0;
+  const successRate = results.length > 0 ? ((passedCount / results.length) * 100).toFixed(2) : '0.00';
   const totalTokens = results.reduce((sum, r) => sum + (r.tokens || 0), 0);
+  const totalCost = results.reduce((sum, r) => sum + (r.cost || 0), 0);
 
   const testData = {
     agentName: AGENT.name,
@@ -290,7 +300,7 @@ async function runTest(excelPath, rpm = 60) {
     durationSeconds,
     avgResponseTime,
     totalTokens,
-    totalCost: 0,
+    totalCost,
     rpm,
     testDate: new Date().toISOString(),
     results,
@@ -322,7 +332,9 @@ async function runTest(excelPath, rpm = 60) {
   console.log(`   失败: ${failedCount}`);
   console.log(`   成功率: ${successRate}%`);
   console.log(`   总耗时: ${durationSeconds}s`);
-  console.log(`   平均响应时间: ${avgResponseTime}ms\n`);
+  console.log(`   平均响应时间: ${avgResponseTime}ms`);
+  console.log(`   Token消耗: ${totalTokens}`);
+  console.log(`   总成本: $${totalCost.toFixed(4)}\n`);
 
   console.log('📁 报告已保存到:');
   console.log(`   - ${mdPath}`);
