@@ -142,8 +142,9 @@ function generateMarkdownReport(data) {
   markdown += `| 成功数 | ${data.passedCount} |\n`;
   markdown += `| 失败数 | ${data.failedCount} |\n`;
   markdown += `| 成功率 | ${data.successRate}% |\n`;
-  markdown += `| 平均响应时间 | ${data.avgResponseTime}ms |\n`;
-  markdown += `| 总耗时 | ${data.durationSeconds}s |\n\n`;
+  markdown += `| 平均响应时间 | ${((data.avgResponseTime || 0) / 1000).toFixed(2)}s |\n`;
+  markdown += `| 总耗时 | ${data.durationSeconds}s |\n`;
+  markdown += `| Token消耗 | ${data.totalTokens || 0} |\n\n`;
 
   markdown += `## 详细结果\n\n`;
   data.results.forEach((r, index) => {
@@ -153,8 +154,8 @@ function generateMarkdownReport(data) {
       markdown += `**参考答案**: ${r.referenceOutput}\n\n`;
     }
     markdown += `**实际输出**: ${r.response || r.error}\n\n`;
-    markdown += `**状态**: ${r.success ? '✅ 成功' : '❌ 失败'}\n\n`;
-    markdown += `**响应时间**: ${r.responseTime}ms\n\n`;
+    markdown += `**响应时间**: ${((r.responseTime || 0) / 1000).toFixed(2)}s\n\n`;
+    if (r.tokens) markdown += `**Token消耗**: ${r.tokens}\n\n`;
     markdown += `---\n\n`;
   });
 
@@ -174,8 +175,9 @@ function generateMarkdownReportEn(data) {
   markdown += `| Passed | ${data.passedCount} |\n`;
   markdown += `| Failed | ${data.failedCount} |\n`;
   markdown += `| Success Rate | ${data.successRate}% |\n`;
-  markdown += `| Avg Response Time | ${data.avgResponseTime}ms |\n`;
-  markdown += `| Duration | ${data.durationSeconds}s |\n\n`;
+  markdown += `| Avg Response Time | ${((data.avgResponseTime || 0) / 1000).toFixed(2)}s |\n`;
+  markdown += `| Duration | ${data.durationSeconds}s |\n`;
+  markdown += `| Token Usage | ${data.totalTokens || 0} |\n\n`;
 
   markdown += `## Detailed Results\n\n`;
   data.results.forEach((r, index) => {
@@ -185,8 +187,8 @@ function generateMarkdownReportEn(data) {
       markdown += `**Reference Answer**: ${r.referenceOutput}\n\n`;
     }
     markdown += `**Actual Output**: ${r.response || r.error}\n\n`;
-    markdown += `**Status**: ${r.success ? '✅ Passed' : '❌ Failed'}\n\n`;
-    markdown += `**Response Time**: ${r.responseTime}ms\n\n`;
+    markdown += `**Response Time**: ${((r.responseTime || 0) / 1000).toFixed(2)}s\n\n`;
+    if (r.tokens) markdown += `**Token Usage**: ${r.tokens}\n\n`;
     markdown += `---\n\n`;
   });
 
@@ -255,6 +257,7 @@ async function runTest(excelPath, rpm = 60) {
       success: result.success,
       error: result.error,
       responseTime: result.responseTime,
+      tokens: result.usage?.tokens?.total_tokens || 0,
       conversationId: result.conversationId,
       messageId: result.messageId,
       timestamp: new Date().toISOString(),
@@ -276,6 +279,7 @@ async function runTest(excelPath, rpm = 60) {
     results.reduce((sum, r) => sum + (r.responseTime || 0), 0) / results.length
   );
   const successRate = ((passedCount / results.length) * 100).toFixed(2);
+  const totalTokens = results.reduce((sum, r) => sum + (r.tokens || 0), 0);
 
   const testData = {
     agentName: AGENT.name,
@@ -285,6 +289,8 @@ async function runTest(excelPath, rpm = 60) {
     successRate,
     durationSeconds,
     avgResponseTime,
+    totalTokens,
+    totalCost: 0,
     rpm,
     testDate: new Date().toISOString(),
     results,

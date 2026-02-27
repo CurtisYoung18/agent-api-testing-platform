@@ -422,7 +422,7 @@ function generateMarkdownReport(data: any): string {
   markdown += `| 成功数 | ${data.passedCount} |\n`;
   markdown += `| 失败数 | ${data.failedCount} |\n`;
   markdown += `| 成功率 | ${data.successRate.toFixed(2)}% |\n`;
-  markdown += `| 平均响应时间 | ${data.avgResponseTime}ms |\n`;
+  markdown += `| 平均响应时间 | ${((data.avgResponseTime || 0) / 1000).toFixed(2)}s |\n`;
   markdown += `| 总耗时 | ${data.durationSeconds}s |\n`;
   markdown += `| Token消耗 | ${data.totalTokens} |\n`;
   markdown += `| 总成本 | $${data.totalCost.toFixed(4)} |\n\n`;
@@ -435,8 +435,7 @@ function generateMarkdownReport(data: any): string {
       markdown += `**参考答案**: ${r.referenceOutput}\n\n`;
     }
     markdown += `**实际输出**: ${r.response || r.error}\n\n`;
-    markdown += `**状态**: ${r.success ? '✅ 成功' : '❌ 失败'}\n\n`;
-    markdown += `**响应时间**: ${r.responseTime}ms\n\n`;
+    markdown += `**响应时间**: ${((r.responseTime || 0) / 1000).toFixed(2)}s\n\n`;
     if (r.tokens) {
       markdown += `**Token消耗**: ${r.tokens}\n\n`;
     }

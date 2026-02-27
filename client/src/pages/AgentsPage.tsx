@@ -65,8 +65,9 @@ export function AgentsPage() {
       setNewAgent({ name: '', modelName: '', region: 'SG', apiKey: '', customBaseUrl: '' })
       setFormError('')
     },
-    onError: () => {
-      setFormError('更新失败，请检查输入并重试')
+    onError: (err: any) => {
+      const msg = err?.response?.data?.message || err?.response?.data?.error || err?.message
+      setFormError(msg ? `更新失败: ${msg}` : '更新失败，请检查输入并重试')
     },
   })
 
