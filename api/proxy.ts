@@ -7,7 +7,7 @@ function getBaseUrl(region: string, customBaseUrl?: string | null): string {
     return customBaseUrl;
   }
   return region === 'SG' 
-    ? 'https://api.gptbots.ai'
+    ? 'https://api-sg.gptbots.ai'
     : 'https://api.gptbots.cn';
 }
 

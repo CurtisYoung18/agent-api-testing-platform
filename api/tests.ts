@@ -43,7 +43,7 @@ function getBaseUrl(region: string, customBaseUrl?: string | null): string {
     return customBaseUrl;
   }
   return region === 'SG' 
-    ? 'https://api.gptbots.ai'
+    ? 'https://api-sg.gptbots.ai'
     : 'https://api.gptbots.cn';
 }
 
@@ -108,10 +108,7 @@ async function callAgentAPI(apiKey: string, region: string, question: string, cu
         response_mode: 'blocking',
         messages: [{
           role: 'user',
-          content: [{
-            type: 'text',
-            text: question
-          }]
+          content: [{ type: 'text', text: question }]
         }]
       }),
     });

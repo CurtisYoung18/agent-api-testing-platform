@@ -22,7 +22,7 @@ function getBaseUrl(region, customBaseUrl) {
   if (region === 'CUSTOM' && customBaseUrl) {
     return customBaseUrl;
   }
-  return region === 'SG' ? 'https://api.gptbots.ai' : 'https://api.gptbots.cn';
+  return region === 'SG' ? 'https://api-sg.gptbots.ai' : 'https://api.gptbots.cn';
 }
 
 function parseExcelFile(filePath) {

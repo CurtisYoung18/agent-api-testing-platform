@@ -43,7 +43,7 @@ function getBaseUrl(region: string, customBaseUrl?: string | null): string {
     return customBaseUrl;
   }
   return region === 'SG' 
-    ? 'https://api.gptbots.ai'
+    ? 'https://api-sg.gptbots.ai'
     : 'https://api.gptbots.cn';
 }
 
@@ -60,20 +60,21 @@ async function callAgentAPI(apiKey: string, region: string, question: string, cu
   try {
     const baseUrl = getBaseUrl(region, customBaseUrl);
 
-    // Create conversation
-    const conversationResponse = await fetch(`${baseUrl}/v2/conversation`, {
+    // Step 1: Create conversation (per 对话api.md: POST /v1/conversation)
+    const conversationResponse = await fetch(`${baseUrl}/v1/conversation`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ user_id: 'test_user_' + Date.now() }),
     });
 
     if (!conversationResponse.ok) {
+      const errorData = await conversationResponse.json().catch(() => ({}));
       return {
         success: false,
-        error: `创建对话失败 (${conversationResponse.status})`,
+        error: errorData.message || `创建对话失败 (${conversationResponse.status})`,
         responseTime: Date.now() - startTime,
       };
     }
@@ -81,7 +82,15 @@ async function callAgentAPI(apiKey: string, region: string, question: string, cu
     const conversationData = await conversationResponse.json();
     const conversationId = conversationData.conversation_id;
 
-    // Send message
+    if (!conversationId) {
+      return {
+        success: false,
+        error: `未获取到conversation_id`,
+        responseTime: Date.now() - startTime,
+      };
+    }
+
+    // Step 2: Send message (per 对话api.md: POST /v2/conversation/message)
     const messageResponse = await fetch(`${baseUrl}/v2/conversation/message`, {
       method: 'POST',
       headers: {
@@ -90,14 +99,11 @@ async function callAgentAPI(apiKey: string, region: string, question: string, cu
       },
       body: JSON.stringify({
         conversation_id: conversationId,
-        inputs: [{
-          input_type: 'text',
-          content: { text: question },
-        }],
-        model_config: {
-          model: 'default',
-          temperature: 0.7,
-        },
+        response_mode: 'blocking',
+        messages: [{
+          role: 'user',
+          content: [{ type: 'text', text: question }]
+        }]
       }),
     });
 

@@ -8,7 +8,7 @@ const getPool = () => new Pool({
 
 function getBaseUrl(region: string, customBaseUrl?: string | null): string {
   if (region === 'CUSTOM' && customBaseUrl) return customBaseUrl;
-  return region === 'SG' ? 'https://api.gptbots.ai' : 'https://api.gptbots.cn';
+  return region === 'SG' ? 'https://api-sg.gptbots.ai' : 'https://api.gptbots.cn';
 }
 
 async function callAgentAPI(
