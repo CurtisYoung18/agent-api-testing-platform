@@ -38,12 +38,19 @@ node_modules/.prisma/
 # Test coverage
 coverage/
 
-# Test output
+# Test output (generated reports)
 test_output/
+
+# Test data files (may contain sensitive data)
+test_sample/*.xlsx
+test_sample/*.xls
 
 # Local data (contains API keys)
 local-data.json
 
+# Logs
+*.log
+server.log
+
 # OS
 Thumbs.db
-

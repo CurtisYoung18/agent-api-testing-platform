@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
  * 重试输出为 undefined 的题目，合并后生成完整报告
- * 用法: node retry-undefined.js <报告xlsx路径> [rpm]
- * 例如: node retry-undefined.js test_output/test_report_2026-02-27T08-39-32.xlsx 15
+ * 用法: node scripts/retry-undefined.js <报告xlsx路径> [rpm]
+ * 例如: node scripts/retry-undefined.js test_output/test_report_2026-02-27T08-39-32.xlsx 15
+ * 注意: 请从项目根目录运行此脚本
  */
 
 import XLSX from 'xlsx';

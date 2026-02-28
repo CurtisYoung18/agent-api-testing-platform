@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * Standalone script to run AI evaluation on an existing test report
- * Usage: node run-eval.js
+ * Usage: node scripts/run-eval.cjs
+ * Note: Run from project root directory
  */
 const fs = require('fs');
 const path = require('path');

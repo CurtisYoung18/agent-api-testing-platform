@@ -162,7 +162,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 数据库 CHECK 约束违反（如 region 不支持 TH）时给出友好提示
     const isCheckViolation = error.code === '23514' || /check constraint|violates check constraint/i.test(error.message || '');
     const userMessage = isCheckViolation
-      ? '数据库尚未支持 TH 区域，请在 Neon Console 执行 database-migration-add-th-region.sql'
+      ? '数据库尚未支持 TH 区域，请在 Neon Console 执行 sql/database-migration-add-th-region.sql'
       : error.message;
     return res.status(500).json({
       error: '服务器错误',

@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
  * 独立测试脚本 - 不依赖前端连接
- * 用法: node run-test.js <excel文件路径> [rpm]
- * 例如: node run-test.js test_sample/测试集模板.xlsx 60
+ * 用法: node scripts/run-test.js <excel文件路径> [rpm]
+ * 例如: node scripts/run-test.js test_sample/测试集模板.xlsx 60
+ * 注意: 请从项目根目录运行此脚本
  */
 
 import XLSX from 'xlsx';
