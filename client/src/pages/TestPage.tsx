@@ -26,6 +26,13 @@ import {
 } from '@heroicons/react/24/outline'
 import { api } from '../lib/api'
 
+const DEFAULT_EVAL_PROMPT = `你是一名专业的答案评估专家。请将测试答案与参考答案进行对比，并提供以下内容：
+1. "matchScore": 语义相似度百分比（0-100），100表示完全一致
+2. "analysis": 简要分析（不超过150字），说明两个答案在哪些方面一致、哪些方面有差异，以及语气或措辞是否存在不当之处
+
+你必须且只能以合法的JSON格式回复，不要包含其他任何文字：
+{"matchScore": 85, "analysis": "..."}`
+
 interface Agent {
   id: number
   name: string
@@ -79,12 +86,6 @@ export function TestPage() {
   // AI Evaluation state
   const [enableEvaluation, setEnableEvaluation] = useState(false)
   const [evaluatorAgent, setEvaluatorAgent] = useState<Agent | null>(null)
-  const DEFAULT_EVAL_PROMPT = `你是一名专业的答案评估专家。请将测试答案与参考答案进行对比，并提供以下内容：
-1. "matchScore": 语义相似度百分比（0-100），100表示完全一致
-2. "analysis": 简要分析（不超过150字），说明两个答案在哪些方面一致、哪些方面有差异，以及语气或措辞是否存在不当之处
-
-你必须且只能以合法的JSON格式回复，不要包含其他任何文字：
-{"matchScore": 85, "analysis": "..."}`
   const [evalSystemPrompt, setEvalSystemPrompt] = useState(DEFAULT_EVAL_PROMPT)
   const [isEvaluating, setIsEvaluating] = useState(false)
   const [evalProgress, setEvalProgress] = useState({ current: 0, total: 0 })
@@ -1598,7 +1599,7 @@ export function TestPage() {
                     )}
 
                     {/* Recent Results */}
-                    {liveResults.length > 0 && (
+                    {(liveResults?.length ?? 0) > 0 && (
                       <div className="glass-card p-6">
                         <h3 className="font-semibold text-text-primary mb-4">最近结果 ({liveResults.slice(-5).length})</h3>
                         <div className="space-y-2 max-h-96 overflow-y-auto">
@@ -1830,7 +1831,7 @@ export function TestPage() {
               {!isEvaluating && !evalComplete && (
                 <div className="space-y-4">
                   <p className="text-text-secondary">
-                    测试已完成，是否使用评估模型对 {liveResults.length} 个答案进行 AI 评估？
+                    测试已完成，是否使用评估模型对 {liveResults?.length ?? 0} 个答案进行 AI 评估？
                   </p>
                   <p className="text-xs text-text-tertiary">
                     评估将分析每个测试答案与参考答案的语义匹配度，并给出简要分析
