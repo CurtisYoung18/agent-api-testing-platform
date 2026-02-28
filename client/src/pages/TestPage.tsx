@@ -22,6 +22,7 @@ import {
   TrashIcon,
   ExclamationTriangleIcon,
   ArrowPathIcon,
+  AcademicCapIcon,
 } from '@heroicons/react/24/outline'
 import { api } from '../lib/api'
 
@@ -31,6 +32,7 @@ interface Agent {
   modelName?: string
   region: string
   apiKey: string
+  isEvaluator?: boolean
   status: string
   lastUsed: string | null
 }
@@ -74,6 +76,22 @@ export function TestPage() {
   const [previewQuestions, setPreviewQuestions] = useState<string[]>([])
   const [showPreview, setShowPreview] = useState(false)
   const [expandedResults, setExpandedResults] = useState<Set<number>>(new Set())
+  // AI Evaluation state
+  const [enableEvaluation, setEnableEvaluation] = useState(false)
+  const [evaluatorAgent, setEvaluatorAgent] = useState<Agent | null>(null)
+  const DEFAULT_EVAL_PROMPT = `你是一名专业的答案评估专家。请将测试答案与参考答案进行对比，并提供以下内容：
+1. "matchScore": 语义相似度百分比（0-100），100表示完全一致
+2. "analysis": 简要分析（不超过150字），说明两个答案在哪些方面一致、哪些方面有差异，以及语气或措辞是否存在不当之处
+
+你必须且只能以合法的JSON格式回复，不要包含其他任何文字：
+{"matchScore": 85, "analysis": "..."}`
+  const [evalSystemPrompt, setEvalSystemPrompt] = useState(DEFAULT_EVAL_PROMPT)
+  const [isEvaluating, setIsEvaluating] = useState(false)
+  const [evalProgress, setEvalProgress] = useState({ current: 0, total: 0 })
+  const [evalResults, setEvalResults] = useState<any[]>([])
+  const [showEvalDialog, setShowEvalDialog] = useState(false)
+  const [evalComplete, setEvalComplete] = useState(false)
+  const [evalSummary, setEvalSummary] = useState<{ avgMatchScore: number; evaluatorName: string; evaluatedCount: number } | null>(null)
 
   // Fetch agents
   const { data: agents = [], isLoading } = useQuery({
@@ -84,8 +102,10 @@ export function TestPage() {
     },
   })
 
-  // Filter agents based on search
-  const filteredAgents = agents.filter((agent) =>
+  // Filter agents: exclude evaluators for test agent selection
+  const testAgents = agents.filter(a => !a.isEvaluator)
+  const evaluatorAgents = agents.filter(a => a.isEvaluator)
+  const filteredAgents = testAgents.filter((agent) =>
     agent.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     agent.region.toLowerCase().includes(searchQuery.toLowerCase())
   )
@@ -291,8 +311,20 @@ export function TestPage() {
                   setRetryRequestTimeout(requestTimeout)
                   setShowRetryConfig(false)
                   setCurrentResponse(`⚠️ 测试完成，但有 ${data.failedCount} 个问题失败。您可以选择重试失败的问题。`)
+                } else if (enableEvaluation && evaluatorAgent) {
+                  // All passed but evaluation is configured - show eval dialog
+                  setPendingSaveData({
+                    results: data.results,
+                    testConfig: data.testConfig,
+                    durationSeconds: data.durationSeconds,
+                    totalTokens: data.totalTokens,
+                    totalCost: data.totalCost,
+                  })
+                  setLiveResults(data.results)
+                  setShowEvalDialog(true)
+                  setCurrentResponse('✅ 测试全部通过！是否进行 AI 评估？')
                 } else {
-                  // All passed - already saved, navigate to history
+                  // All passed, no evaluation - already saved, navigate to history
                   setCurrentResponse('✅ 测试已完成！正在跳转到历史记录...')
                   setTimeout(() => {
                     navigate('/history', { state: { refresh: true } })
@@ -534,6 +566,7 @@ export function TestPage() {
           durationSeconds: pendingSaveData.durationSeconds,
           totalTokens: pendingSaveData.totalTokens,
           totalCost: pendingSaveData.totalCost,
+          evaluation: pendingSaveData.evaluation || undefined,
         }),
       })
 
@@ -550,6 +583,105 @@ export function TestPage() {
       setTestError(error.message || '保存失败')
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  // Handle AI evaluation
+  const handleStartEvaluation = async () => {
+    if (!evaluatorAgent || liveResults.length === 0) return
+
+    setIsEvaluating(true)
+    setEvalComplete(false)
+    setEvalResults([])
+    setEvalProgress({ current: 0, total: liveResults.length })
+    setShowEvalDialog(true)
+
+    try {
+      const response = await fetch('/api/tests/evaluate?stream=true', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          evaluatorAgentId: evaluatorAgent.id,
+          results: liveResults.map(r => ({
+            question: r.question,
+            referenceOutput: r.referenceOutput || '',
+            response: r.response || '',
+            error: r.error,
+          })),
+          executionMode: 'sequential',
+          requestDelay: 1000,
+          systemPrompt: evalSystemPrompt !== DEFAULT_EVAL_PROMPT ? evalSystemPrompt : undefined,
+        }),
+      })
+
+      if (!response.ok) throw new Error('评估请求失败')
+
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+      if (!reader) throw new Error('无法读取响应流')
+
+      let buffer = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.substring(6))
+              if (data.type === 'eval_progress') {
+                setEvalProgress({ current: data.current, total: data.total })
+              } else if (data.type === 'eval_result') {
+                setEvalResults(prev => [...prev, data])
+              } else if (data.type === 'eval_complete') {
+                setEvalComplete(true)
+                setEvalSummary({
+                  avgMatchScore: data.avgMatchScore,
+                  evaluatorName: data.evaluatorName,
+                  evaluatedCount: data.evaluatedCount,
+                })
+                // Merge eval results into liveResults
+                const evalMap = new Map<number, any>(data.evalResults.map((er: any) => [er.questionIndex, er]))
+                setLiveResults(prev => prev.map((r, idx) => {
+                  const evalData = evalMap.get(idx)
+                  if (evalData) {
+                    return {
+                      ...r,
+                      evaluation: {
+                        matchScore: evalData.matchScore,
+                        analysis: evalData.analysis,
+                        evaluatorName: data.evaluatorName,
+                      }
+                    }
+                  }
+                  return r
+                }))
+                // Update pendingSaveData with evaluation info
+                setPendingSaveData((prev: any) => prev ? {
+                  ...prev,
+                  evaluation: {
+                    evaluatorAgentId: evaluatorAgent.id,
+                    evaluatorAgentName: data.evaluatorName,
+                    avgMatchScore: data.avgMatchScore,
+                    evaluatedCount: data.evaluatedCount,
+                  },
+                } : prev)
+              }
+            } catch (err) {
+              console.error('Failed to parse eval SSE:', err)
+            }
+          }
+        }
+      }
+    } catch (error: any) {
+      console.error('Evaluation error:', error)
+      setTestError(error.message || '评估执行失败')
+    } finally {
+      setIsEvaluating(false)
     }
   }
 
@@ -1060,6 +1192,87 @@ export function TestPage() {
                   </div>
                 </div>
 
+                {/* AI Evaluation (Optional) */}
+                <div className="border-t border-primary-100 pt-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center space-x-2">
+                      <AcademicCapIcon className="w-5 h-5 text-violet-500" />
+                      <label className="text-sm font-medium text-text-primary">AI 评估（可选）</label>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEnableEvaluation(!enableEvaluation)
+                        if (enableEvaluation) setEvaluatorAgent(null)
+                      }}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        enableEvaluation ? 'bg-violet-500' : 'bg-gray-300'
+                      }`}
+                    >
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        enableEvaluation ? 'translate-x-6' : 'translate-x-1'
+                      }`} />
+                    </button>
+                  </div>
+
+                  {enableEvaluation && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="space-y-3"
+                    >
+                      <p className="text-xs text-text-tertiary">
+                        测试完成后，使用评估模型分析每个答案与参考答案的匹配度
+                      </p>
+                      {evaluatorAgents.length > 0 ? (
+                        <select
+                          className="input-field"
+                          value={evaluatorAgent?.id || ''}
+                          onChange={(e) => {
+                            const id = parseInt(e.target.value)
+                            setEvaluatorAgent(evaluatorAgents.find(a => a.id === id) || null)
+                          }}
+                        >
+                          <option value="">选择评估模型...</option>
+                          {evaluatorAgents.map(a => (
+                            <option key={a.id} value={a.id}>{a.name} ({a.region}){a.modelName ? ` - ${a.modelName}` : ''}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <div className="text-sm text-yellow-600 bg-yellow-50 p-3 rounded-lg">
+                          暂无评估模型，请先在 Agent 管理页面添加一个评估模型
+                        </div>
+                      )}
+
+                      <div className="mt-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-medium text-text-secondary">评估提示词</label>
+                          {evalSystemPrompt !== DEFAULT_EVAL_PROMPT && (
+                            <button
+                              type="button"
+                              onClick={() => setEvalSystemPrompt(DEFAULT_EVAL_PROMPT)}
+                              className="text-xs text-violet-500 hover:text-violet-600"
+                            >
+                              恢复默认
+                            </button>
+                          )}
+                        </div>
+                        <textarea
+                          className="input-field text-xs font-mono leading-relaxed"
+                          rows={6}
+                          value={evalSystemPrompt}
+                          onChange={(e) => setEvalSystemPrompt(e.target.value)}
+                          placeholder="评估系统提示词..."
+                        />
+                        <p className="text-xs text-text-tertiary mt-1">
+                          修改仅对本轮测试生效，不会影响默认配置
+                        </p>
+                      </div>
+                    </motion.div>
+                  )}
+                </div>
+
                 <div className="glass-card p-4 bg-primary-50/30 space-y-2">
                   <p className="text-sm font-semibold text-text-primary">测试摘要:</p>
                   <p className="text-sm text-text-secondary">
@@ -1084,6 +1297,11 @@ export function TestPage() {
                   <p className="text-sm text-text-secondary">
                     <span className="font-medium">会话用户ID:</span> {customUserId || '自动生成'}
                   </p>
+                  {enableEvaluation && evaluatorAgent && (
+                    <p className="text-sm text-violet-600">
+                      <span className="font-medium">AI 评估:</span> {evaluatorAgent.name} ({evaluatorAgent.region})
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -1313,14 +1531,24 @@ export function TestPage() {
                               </div>
                             </>
                           ) : (
-                            <div className="flex justify-center">
+                            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                              {enableEvaluation && evaluatorAgent && !evalComplete && (
+                                <button
+                                  onClick={handleStartEvaluation}
+                                  disabled={isEvaluating || isSaving}
+                                  className="flex items-center justify-center space-x-2 px-6 py-3 bg-violet-500 hover:bg-violet-600 text-white font-semibold rounded-lg transition-all disabled:opacity-50"
+                                >
+                                  <AcademicCapIcon className={`w-5 h-5 ${isEvaluating ? 'animate-pulse' : ''}`} />
+                                  <span>{isEvaluating ? '评估中...' : 'AI 评估结果'}</span>
+                                </button>
+                              )}
                               <button
                                 onClick={handleSaveAndNavigate}
-                                disabled={isSaving}
+                                disabled={isSaving || isEvaluating}
                                 className="flex items-center justify-center space-x-2 px-6 py-3 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-lg transition-all disabled:opacity-50"
                               >
                                 <CheckCircleIcon className="w-5 h-5" />
-                                <span>{isSaving ? '保存中...' : '保存结果并查看报告'}</span>
+                                <span>{isSaving ? '保存中...' : (evalComplete ? '保存结果并查看报告' : '跳过评估，保存结果')}</span>
                               </button>
                             </div>
                           )}
@@ -1498,6 +1726,17 @@ export function TestPage() {
                           {customUserId || '自动生成'}
                         </span>
                       </div>
+                      {enableEvaluation && evaluatorAgent && (
+                        <div className="flex items-center justify-between text-sm border-t border-primary-100 pt-2 mt-2">
+                          <span className="text-violet-600 flex items-center space-x-1">
+                            <AcademicCapIcon className="w-4 h-4" />
+                            <span>AI 评估:</span>
+                          </span>
+                          <span className="font-medium text-violet-600">
+                            {evaluatorAgent.name}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     {testError && (
@@ -1558,6 +1797,147 @@ export function TestPage() {
           </button>
         )}
       </div>
+
+      {/* AI Evaluation Dialog */}
+      <AnimatePresence>
+        {showEvalDialog && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              transition={{ type: "spring", duration: 0.3 }}
+              className="glass-card p-6 max-w-lg w-full mx-4 max-h-[80vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center space-x-3 mb-4">
+                <div className="bg-violet-500/10 p-3 rounded-full">
+                  <AcademicCapIcon className="w-6 h-6 text-violet-500" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-text-primary">AI 评估</h2>
+                  <p className="text-sm text-text-tertiary">
+                    {evaluatorAgent?.name} ({evaluatorAgent?.region})
+                  </p>
+                </div>
+              </div>
+
+              {!isEvaluating && !evalComplete && (
+                <div className="space-y-4">
+                  <p className="text-text-secondary">
+                    测试已完成，是否使用评估模型对 {liveResults.length} 个答案进行 AI 评估？
+                  </p>
+                  <p className="text-xs text-text-tertiary">
+                    评估将分析每个测试答案与参考答案的语义匹配度，并给出简要分析
+                  </p>
+                  <div className="flex space-x-3">
+                    <button
+                      onClick={() => { setShowEvalDialog(false) }}
+                      className="btn-outline flex-1"
+                    >
+                      跳过评估
+                    </button>
+                    <button
+                      onClick={handleStartEvaluation}
+                      className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 bg-violet-500 hover:bg-violet-600 text-white font-semibold rounded-lg transition-all"
+                    >
+                      <AcademicCapIcon className="w-5 h-5" />
+                      <span>开始评估</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {isEvaluating && (
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-3">
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                    >
+                      <AcademicCapIcon className="w-6 h-6 text-violet-500" />
+                    </motion.div>
+                    <p className="text-text-secondary">
+                      正在评估 {evalProgress.current}/{evalProgress.total}...
+                    </p>
+                  </div>
+                  <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <motion.div
+                      className="h-full bg-violet-500"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${evalProgress.total > 0 ? (evalProgress.current / evalProgress.total) * 100 : 0}%` }}
+                    />
+                  </div>
+                  {evalResults.length > 0 && (
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {evalResults.slice(-3).reverse().map((er, idx) => (
+                        <div key={idx} className="text-sm p-2 bg-violet-50 rounded-lg">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-medium text-violet-700">Q{er.questionIndex + 1}</span>
+                            <span className={`font-bold ${er.matchScore >= 70 ? 'text-green-600' : er.matchScore >= 40 ? 'text-yellow-600' : 'text-red-600'}`}>
+                              {er.matchScore}%
+                            </span>
+                          </div>
+                          <p className="text-xs text-text-tertiary truncate">{er.analysis}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {evalComplete && evalSummary && (
+                <div className="space-y-4">
+                  <div className="text-center">
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ type: "spring", duration: 0.5 }}
+                    >
+                      <CheckCircleIcon className="w-12 h-12 text-green-500 mx-auto mb-2" />
+                    </motion.div>
+                    <h3 className="text-lg font-bold text-text-primary">评估完成</h3>
+                  </div>
+
+                  <div className="glass-card p-4 bg-violet-50/50 space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-text-secondary">评估模型:</span>
+                      <span className="font-medium">{evalSummary.evaluatorName}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-text-secondary">已评估:</span>
+                      <span className="font-medium">{evalSummary.evaluatedCount} 个问题</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-text-secondary">平均匹配度:</span>
+                      <span className={`font-bold text-lg ${evalSummary.avgMatchScore >= 70 ? 'text-green-600' : evalSummary.avgMatchScore >= 40 ? 'text-yellow-600' : 'text-red-600'}`}>
+                        {evalSummary.avgMatchScore}%
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setShowEvalDialog(false)
+                      handleSaveAndNavigate()
+                    }}
+                    disabled={isSaving}
+                    className="w-full flex items-center justify-center space-x-2 px-6 py-3 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-lg transition-all disabled:opacity-50"
+                  >
+                    <CheckCircleIcon className="w-5 h-5" />
+                    <span>{isSaving ? '保存中...' : '保存结果并查看报告'}</span>
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

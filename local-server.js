@@ -80,6 +80,7 @@ app.get('/api/agents', (req, res) => {
     region: agent.region,
     apiKey: agent.api_key,
     customBaseUrl: agent.custom_base_url,
+    isEvaluator: agent.is_evaluator || false,
     status: agent.status,
     lastUsed: agent.last_used,
     createdAt: agent.created_at,
@@ -90,7 +91,7 @@ app.get('/api/agents', (req, res) => {
 
 // POST /api/agents - 创建 agent
 app.post('/api/agents', (req, res) => {
-  const { name, modelName, region, apiKey, customBaseUrl } = req.body;
+  const { name, modelName, region, apiKey, customBaseUrl, isEvaluator } = req.body;
   const newAgent = {
     id: nextId++,
     name,
@@ -98,13 +99,14 @@ app.post('/api/agents', (req, res) => {
     region,
     api_key: apiKey,
     custom_base_url: customBaseUrl || null,
+    is_evaluator: isEvaluator || false,
     status: 'active',
     last_used: null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
   agents.push(newAgent);
-  saveLocalData(); // 持久化保存
+  saveLocalData();
   res.status(201).json({
     id: newAgent.id,
     name: newAgent.name,
@@ -112,6 +114,7 @@ app.post('/api/agents', (req, res) => {
     region: newAgent.region,
     apiKey: newAgent.api_key,
     customBaseUrl: newAgent.custom_base_url,
+    isEvaluator: newAgent.is_evaluator || false,
     status: newAgent.status,
     createdAt: newAgent.created_at,
     updatedAt: newAgent.updated_at,
@@ -131,6 +134,38 @@ app.get('/api/agents/:id', (req, res) => {
     region: agent.region,
     apiKey: agent.api_key,
     customBaseUrl: agent.custom_base_url,
+    isEvaluator: agent.is_evaluator || false,
+    status: agent.status,
+    lastUsed: agent.last_used,
+    createdAt: agent.created_at,
+    updatedAt: agent.updated_at,
+  });
+});
+
+// PUT /api/agents/:id - 更新 agent
+app.put('/api/agents/:id', (req, res) => {
+  const agent = agents.find(a => a.id === parseInt(req.params.id));
+  if (!agent) {
+    return res.status(404).json({ error: 'Agent not found' });
+  }
+  const { name, modelName, region, apiKey, customBaseUrl, isEvaluator, status } = req.body;
+  if (name) agent.name = name;
+  if (modelName !== undefined) agent.model_name = modelName || null;
+  if (region) agent.region = region;
+  if (apiKey) agent.api_key = apiKey;
+  if (customBaseUrl !== undefined) agent.custom_base_url = customBaseUrl || null;
+  if (isEvaluator !== undefined) agent.is_evaluator = !!isEvaluator;
+  if (status) agent.status = status;
+  agent.updated_at = new Date().toISOString();
+  saveLocalData();
+  res.json({
+    id: agent.id,
+    name: agent.name,
+    modelName: agent.model_name,
+    region: agent.region,
+    apiKey: agent.api_key,
+    customBaseUrl: agent.custom_base_url,
+    isEvaluator: agent.is_evaluator || false,
     status: agent.status,
     lastUsed: agent.last_used,
     createdAt: agent.created_at,
@@ -372,6 +407,10 @@ function generateMarkdownReport(data) {
   if (data.retriedCount > 0) {
     markdown += `| 重试成功数 | ${data.retriedCount} |\n`;
   }
+  if (data.evaluation) {
+    markdown += `| 平均匹配度 | ${data.evaluation.avgMatchScore}% |\n`;
+    markdown += `| 评估模型 | ${data.evaluation.evaluatorAgentName} |\n`;
+  }
   markdown += `\n`;
 
   markdown += `## 详细结果\n\n`;
@@ -389,6 +428,10 @@ function generateMarkdownReport(data) {
     }
     if (r.cost != null) {
       markdown += `**积分**: ${r.cost.toFixed(4)}\n\n`;
+    }
+    if (r.evaluation) {
+      markdown += `**AI评估**: ${r.evaluation.matchScore}% 匹配\n\n`;
+      markdown += `**分析**: ${r.evaluation.analysis}\n\n`;
     }
     markdown += `---\n\n`;
   });
@@ -428,6 +471,10 @@ function generateMarkdownReportEn(data) {
   if (data.retriedCount > 0) {
     markdown += `| Retried & Passed | ${data.retriedCount} |\n`;
   }
+  if (data.evaluation) {
+    markdown += `| Avg Match Score | ${data.evaluation.avgMatchScore}% |\n`;
+    markdown += `| Evaluator | ${data.evaluation.evaluatorAgentName} |\n`;
+  }
   markdown += `\n`;
 
   markdown += `## Detailed Results\n\n`;
@@ -446,6 +493,10 @@ function generateMarkdownReportEn(data) {
     if (r.cost != null) {
       markdown += `**Credits**: ${r.cost.toFixed(4)}\n\n`;
     }
+    if (r.evaluation) {
+      markdown += `**Evaluation**: ${r.evaluation.matchScore}% match\n\n`;
+      markdown += `**Analysis**: ${r.evaluation.analysis}\n\n`;
+    }
     markdown += `---\n\n`;
   });
 
@@ -454,18 +505,25 @@ function generateMarkdownReportEn(data) {
 
 // Generate Excel report
 function generateExcelReport(data) {
-  const rows = data.results.map((r, index) => ({
-    '序号': index + 1,
-    '问题': r.question,
-    '参考答案': r.referenceOutput || '',
-    '实际输出': r.response || r.error,
-    '状态': r.success ? '成功' : '失败',
-    '重试次数': r.retryCount || 0,
-    '响应时间(ms)': r.responseTime,
-    'Token消耗': r.tokens || 0,
-    '成本': r.cost || 0,
-    '时间戳': r.timestamp || new Date().toISOString(),
-  }));
+  const rows = data.results.map((r, index) => {
+    const row = {
+      '序号': index + 1,
+      '问题': r.question,
+      '参考答案': r.referenceOutput || '',
+      '实际输出': r.response || r.error,
+      '状态': r.success ? '成功' : '失败',
+      '重试次数': r.retryCount || 0,
+      '响应时间(ms)': r.responseTime,
+      'Token消耗': r.tokens || 0,
+      '成本': r.cost || 0,
+      '时间戳': r.timestamp || new Date().toISOString(),
+    };
+    if (r.evaluation) {
+      row['匹配度'] = `${r.evaluation.matchScore}%`;
+      row['AI分析'] = r.evaluation.analysis || '';
+    }
+    return row;
+  });
 
   const summaryRow = {
     '序号': '汇总',
@@ -478,6 +536,10 @@ function generateExcelReport(data) {
     '积分': (data.totalCost || 0).toFixed(4),
     '时间戳': data.testDate,
   };
+  if (data.evaluation) {
+    summaryRow['匹配度'] = `平均: ${data.evaluation.avgMatchScore}%`;
+    summaryRow['AI分析'] = `评估模型: ${data.evaluation.evaluatorAgentName}`;
+  }
 
   rows.unshift(summaryRow);
 
@@ -932,7 +994,7 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
 // POST /api/tests/save - 保存测试结果到历史记录（用于有失败后确认保存）
 app.post('/api/tests/save', express.json({ limit: '50mb' }), async (req, res) => {
   try {
-    const { results, testConfig, durationSeconds, totalTokens, totalCost } = req.body;
+    const { results, testConfig, durationSeconds, totalTokens, totalCost, evaluation } = req.body;
 
     if (!results || !testConfig) {
       return res.status(400).json({ error: '缺少必要参数' });
@@ -943,10 +1005,8 @@ app.post('/api/tests/save', express.json({ limit: '50mb' }), async (req, res) =>
     const avgResponseTime = Math.round(results.reduce((sum, r) => sum + (r.responseTime || 0), 0) / results.length);
     const successRate = (passedCount / results.length * 100).toFixed(2);
 
-    // Count retried questions
     const retriedCount = results.filter(r => r.retryCount && r.retryCount > 0).length;
 
-    // Save to history
     const historyEntry = saveTestToHistory({
       agentId: testConfig.agentId,
       agentName: testConfig.agentName,
@@ -968,6 +1028,7 @@ app.post('/api/tests/save', express.json({ limit: '50mb' }), async (req, res) =>
         retryCount: r.retryCount || 0,
       })),
       retriedCount,
+      evaluation: evaluation || undefined,
     });
 
     // Auto-save reports to local directory
@@ -1118,6 +1179,115 @@ app.post('/api/tests/retry', express.json({ limit: '50mb' }), async (req, res) =
     console.log(`[retry] Completed with ${results.length} results`);
   } catch (error) {
     console.error('[retry] Error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message || '服务器错误' });
+    } else {
+      res.write(`data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`);
+      res.end();
+    }
+  }
+});
+
+// POST /api/tests/evaluate - AI evaluation of test results (SSE)
+const DEFAULT_EVAL_SYSTEM_PROMPT = `你是一名专业的答案评估专家。请将测试答案与参考答案进行对比，并提供以下内容：
+1. "matchScore": 语义相似度百分比（0-100），100表示完全一致
+2. "analysis": 简要分析（不超过150字），说明两个答案在哪些方面一致、哪些方面有差异，以及语气或措辞是否存在不当之处
+
+你必须且只能以合法的JSON格式回复，不要包含其他任何文字：
+{"matchScore": 85, "analysis": "..."}`;
+
+function buildEvalUserMessage(question, referenceAnswer, testAnswer) {
+  return `测试问题: ${question}\n\n参考答案: ${referenceAnswer}\n\n测试答案: ${testAnswer}\n\n请对比测试答案与参考答案，给出评估结果。`;
+}
+
+function parseEvalResponse(text) {
+  try {
+    const jsonMatch = text.match(/\{[\s\S]*?"matchScore"[\s\S]*?"analysis"[\s\S]*?\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        matchScore: Math.min(100, Math.max(0, Number(parsed.matchScore) || 0)),
+        analysis: String(parsed.analysis || '').slice(0, 200),
+      };
+    }
+  } catch (_) {}
+  return { matchScore: 0, analysis: 'Failed to parse evaluation response' };
+}
+
+app.post('/api/tests/evaluate', express.json({ limit: '50mb' }), async (req, res) => {
+  try {
+    const { evaluatorAgentId, results, executionMode, maxConcurrency, requestDelay, systemPrompt } = req.body;
+
+    if (!evaluatorAgentId || !results || results.length === 0) {
+      return res.status(400).json({ error: '缺少必要参数 (evaluatorAgentId, results)' });
+    }
+
+    const agent = agents.find(a => a.id === parseInt(evaluatorAgentId));
+    if (!agent) {
+      return res.status(404).json({ error: '评估模型不存在' });
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.write(`data: ${JSON.stringify({ type: 'eval_connected', totalQuestions: results.length })}\n\n`);
+
+    const isParallel = executionMode === 'parallel';
+    const concurrency = parseInt(maxConcurrency) || 2;
+    const delay = parseInt(requestDelay) || 0;
+    const evalResults = [];
+
+    const evaluateOne = async (r, idx) => {
+      const question = r.question || '';
+      const referenceOutput = r.referenceOutput || '';
+      const testAnswer = r.response || r.error || '';
+      if (!referenceOutput || !testAnswer) {
+        return { questionIndex: idx, matchScore: 0, analysis: 'Missing reference or test answer' };
+      }
+      const evalPrompt = systemPrompt || DEFAULT_EVAL_SYSTEM_PROMPT;
+      const prompt = `${evalPrompt}\n\n${buildEvalUserMessage(question, referenceOutput, testAnswer)}`;
+      const apiResult = await callAgentAPI(agent.api_key, agent.region, prompt, agent.custom_base_url);
+      if (!apiResult.success || !apiResult.response) {
+        return { questionIndex: idx, matchScore: 0, analysis: `Evaluation failed: ${apiResult.error || 'no response'}` };
+      }
+      const parsed = parseEvalResponse(apiResult.response);
+      return { questionIndex: idx, ...parsed };
+    };
+
+    if (isParallel) {
+      for (let i = 0; i < results.length; i += concurrency) {
+        const batch = results.slice(i, i + concurrency);
+        res.write(`data: ${JSON.stringify({ type: 'eval_progress', current: i + 1, total: results.length })}\n\n`);
+        const batchResults = await Promise.all(batch.map((r, bIdx) => evaluateOne(r, i + bIdx)));
+        for (const er of batchResults) { evalResults.push(er); res.write(`data: ${JSON.stringify({ type: 'eval_result', ...er })}\n\n`); }
+        if (i + concurrency < results.length) await new Promise(r => setTimeout(r, 1000));
+      }
+    } else {
+      for (let i = 0; i < results.length; i++) {
+        res.write(`data: ${JSON.stringify({ type: 'eval_progress', current: i + 1, total: results.length, question: results[i].question?.slice(0, 60) })}\n\n`);
+        const er = await evaluateOne(results[i], i);
+        evalResults.push(er);
+        res.write(`data: ${JSON.stringify({ type: 'eval_result', ...er })}\n\n`);
+        if (i < results.length - 1 && delay > 0) await new Promise(r => setTimeout(r, delay));
+      }
+    }
+
+    const avgMatchScore = evalResults.length > 0
+      ? Math.round(evalResults.reduce((s, r) => s + (r.matchScore || 0), 0) / evalResults.length * 100) / 100
+      : 0;
+    res.write(`data: ${JSON.stringify({
+      type: 'eval_complete',
+      evaluatorName: agent.name,
+      avgMatchScore,
+      evaluatedCount: evalResults.length,
+      evalResults,
+    })}\n\n`);
+    res.end();
+
+    console.log(`[evaluate] Completed: ${evalResults.length} questions, avg match: ${avgMatchScore}%`);
+  } catch (error) {
+    console.error('[evaluate] Error:', error);
     if (!res.headersSent) {
       res.status(500).json({ error: error.message || '服务器错误' });
     } else {
