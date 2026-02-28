@@ -1236,8 +1236,9 @@ app.post('/api/tests/evaluate', express.json({ limit: '50mb' }), async (req, res
       const question = r.question || '';
       const referenceOutput = r.referenceOutput || '';
       const testAnswer = r.response || r.error || '';
-      if (!referenceOutput || !testAnswer) {
-        return { questionIndex: idx, evalText: '缺少参考答案或测试答案', score: 0 };
+      if (!referenceOutput) return null;
+      if (!testAnswer) {
+        return { questionIndex: idx, evalText: '缺少测试答案', score: 0 };
       }
       const evalPrompt = systemPrompt || DEFAULT_EVAL_SYSTEM_PROMPT;
       const prompt = `${evalPrompt}\n\n${buildEvalUserMessage(question, referenceOutput, testAnswer)}`;
@@ -1250,18 +1251,24 @@ app.post('/api/tests/evaluate', express.json({ limit: '50mb' }), async (req, res
       return { questionIndex: idx, evalText, score };
     };
 
+    const needsEval = results.filter(r => !!(r.referenceOutput));
+    const totalToEval = needsEval.length;
+
     if (isParallel) {
       for (let i = 0; i < results.length; i += concurrency) {
         const batch = results.slice(i, i + concurrency);
-        res.write(`data: ${JSON.stringify({ type: 'eval_progress', current: i + 1, total: results.length })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: 'eval_progress', current: evalResults.length + 1, total: totalToEval })}\n\n`);
         const batchResults = await Promise.all(batch.map((r, bIdx) => evaluateOne(r, i + bIdx)));
-        for (const er of batchResults) { evalResults.push(er); res.write(`data: ${JSON.stringify({ type: 'eval_result', ...er })}\n\n`); }
+        for (const er of batchResults) {
+          if (er) { evalResults.push(er); res.write(`data: ${JSON.stringify({ type: 'eval_result', ...er })}\n\n`); }
+        }
         if (i + concurrency < results.length) await new Promise(r => setTimeout(r, 1000));
       }
     } else {
       for (let i = 0; i < results.length; i++) {
-        res.write(`data: ${JSON.stringify({ type: 'eval_progress', current: i + 1, total: results.length, question: results[i].question?.slice(0, 60) })}\n\n`);
         const er = await evaluateOne(results[i], i);
+        if (!er) continue;
+        res.write(`data: ${JSON.stringify({ type: 'eval_progress', current: evalResults.length + 1, total: totalToEval, question: results[i].question?.slice(0, 60) })}\n\n`);
         evalResults.push(er);
         res.write(`data: ${JSON.stringify({ type: 'eval_result', ...er })}\n\n`);
         if (i < results.length - 1 && delay > 0) await new Promise(r => setTimeout(r, delay));
