@@ -575,8 +575,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       requestDelay,
     };
 
-    // If there are failures, don't save yet - wait for user to retry or confirm (like local-server)
-    if (testResults.failedCount > 0) {
+    const wantEval = fields.enableEvaluation?.[0] === 'true';
+
+    // If there are failures or user wants evaluation, don't save yet
+    if (testResults.failedCount > 0 || wantEval) {
       const firstFailure = testResults.results.find((r: any) => !r.success);
       if (firstFailure) {
         console.error('[error] First failure:', { question: firstFailure.question?.slice(0, 50), error: firstFailure.error });

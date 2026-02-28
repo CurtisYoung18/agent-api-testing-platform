@@ -883,9 +883,11 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
       const avgResponseTime = Math.round(results.reduce((sum, r) => sum + (r.responseTime || 0), 0) / results.length);
       const successRate = (passedCount / results.length * 100).toFixed(2);
 
-      // If there are failures, don't save yet - wait for user to retry or confirm
-      if (failedCount > 0) {
-        console.log(`[tests] Test completed with ${failedCount} failures, waiting for retry or confirm`);
+      const wantEval = req.body?.enableEvaluation === true || req.body?.enableEvaluation === 'true';
+
+      // If there are failures or user wants evaluation, don't save yet
+      if (failedCount > 0 || wantEval) {
+        console.log(`[tests] Test completed: ${failedCount} failures, evaluation=${wantEval}, waiting for user action`);
         res.write(`data: ${JSON.stringify({ 
           type: 'complete', 
           pendingSave: true,
@@ -909,7 +911,7 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
         return;
       }
 
-      // All passed - save to history immediately
+      // All passed, no evaluation - save to history immediately
       const historyEntry = saveTestToHistory({
         agentId: parseInt(agentId),
         agentName: agent.name,

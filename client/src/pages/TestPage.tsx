@@ -224,6 +224,9 @@ export function TestPage() {
     if (customUserId.trim()) {
       formData.append('userId', customUserId.trim())
     }
+    if (enableEvaluation && evaluatorAgent) {
+      formData.append('enableEvaluation', 'true')
+    }
 
     try {
       // Upload file and start test with SSE
@@ -290,7 +293,7 @@ export function TestPage() {
                 setCurrentQuestion('')
                 
                 if (data.pendingSave) {
-                  // Has failures - save data for later, show retry option
+                  // Backend deferred saving — set up data for manual save
                   setPendingSaveData({
                     results: data.results,
                     testConfig: data.testConfig,
@@ -305,27 +308,25 @@ export function TestPage() {
                     failedCount: data.failedCount,
                     successRate: data.successRate,
                   }))
-                  // Initialize retry config with current settings
-                  setRetryExecutionMode(executionMode)
-                  setRetryMaxConcurrency(maxConcurrency)
-                  setRetryRequestDelay(requestDelay)
-                  setRetryRequestTimeout(requestTimeout)
-                  setShowRetryConfig(false)
-                  setCurrentResponse(`⚠️ 测试完成，但有 ${data.failedCount} 个问题失败。您可以选择重试失败的问题。`)
-                } else if (enableEvaluation && evaluatorAgent) {
-                  // All passed but evaluation is configured - show eval dialog
-                  setPendingSaveData({
-                    results: data.results,
-                    testConfig: data.testConfig,
-                    durationSeconds: data.durationSeconds,
-                    totalTokens: data.totalTokens,
-                    totalCost: data.totalCost,
-                  })
-                  setLiveResults(data.results)
-                  setShowEvalDialog(true)
-                  setCurrentResponse('✅ 测试全部通过！是否进行 AI 评估？')
+
+                  if (data.failedCount > 0) {
+                    // Has failures — show retry option
+                    setRetryExecutionMode(executionMode)
+                    setRetryMaxConcurrency(maxConcurrency)
+                    setRetryRequestDelay(requestDelay)
+                    setRetryRequestTimeout(requestTimeout)
+                    setShowRetryConfig(false)
+                    setCurrentResponse(`⚠️ 测试完成，但有 ${data.failedCount} 个问题失败。您可以选择重试失败的问题。`)
+                  } else if (enableEvaluation && evaluatorAgent) {
+                    // All passed, evaluation enabled — show eval dialog
+                    setShowEvalDialog(true)
+                    setCurrentResponse('✅ 测试全部通过！是否进行 AI 评估？')
+                  } else {
+                    // All passed, no evaluation — prompt to save
+                    setCurrentResponse('✅ 测试全部通过！点击保存结果。')
+                  }
                 } else {
-                  // All passed, no evaluation - already saved, navigate to history
+                  // All passed, no evaluation, already saved by backend — navigate to history
                   setCurrentResponse('✅ 测试已完成！正在跳转到历史记录...')
                   setTimeout(() => {
                     navigate('/history', { state: { refresh: true } })
