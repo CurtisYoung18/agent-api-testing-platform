@@ -15,7 +15,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (req.method === 'GET') {
       const result = await pool.query(
-        'SELECT id, name, model_name, region, api_key, custom_base_url, status, last_used, created_at, updated_at FROM agents ORDER BY created_at DESC'
+        'SELECT id, name, model_name, region, api_key, custom_base_url, is_evaluator, status, last_used, created_at, updated_at FROM agents ORDER BY created_at DESC'
       );
 
       const maskedAgents = result.rows.map((agent: any) => ({
@@ -27,6 +27,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ? `${agent.api_key.slice(0, 10)}***${agent.api_key.slice(-4)}`
           : '***',
         customBaseUrl: agent.custom_base_url || undefined,
+        isEvaluator: agent.is_evaluator || false,
         status: agent.status,
         lastUsed: agent.last_used,
         createdAt: agent.created_at,
@@ -37,7 +38,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (req.method === 'POST') {
-      const { name, modelName, region, apiKey, customBaseUrl } = req.body;
+      const { name, modelName, region, apiKey, customBaseUrl, isEvaluator } = req.body;
 
       console.log('Create agent request:', { name, modelName, region, hasCustomBaseUrl: !!customBaseUrl });
 
@@ -54,10 +55,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const result = await pool.query(
-        `INSERT INTO agents (name, model_name, region, api_key, custom_base_url, status) 
-         VALUES ($1, $2, $3, $4, $5, 'active') 
-         RETURNING id, name, model_name, region, api_key, custom_base_url, status, last_used, created_at, updated_at`,
-        [name, modelName || null, region, apiKey, customBaseUrl || null]
+        `INSERT INTO agents (name, model_name, region, api_key, custom_base_url, is_evaluator, status) 
+         VALUES ($1, $2, $3, $4, $5, $6, 'active') 
+         RETURNING id, name, model_name, region, api_key, custom_base_url, is_evaluator, status, last_used, created_at, updated_at`,
+        [name, modelName || null, region, apiKey, customBaseUrl || null, isEvaluator || false]
       );
 
       const agent = result.rows[0];
@@ -70,6 +71,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         region: agent.region,
         apiKey: `${agent.api_key.slice(0, 10)}***${agent.api_key.slice(-4)}`,
         customBaseUrl: agent.custom_base_url || undefined,
+        isEvaluator: agent.is_evaluator || false,
         status: agent.status,
         lastUsed: agent.last_used,
         createdAt: agent.created_at,

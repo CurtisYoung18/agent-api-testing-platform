@@ -26,12 +26,12 @@ import {
 } from '@heroicons/react/24/outline'
 import { api } from '../lib/api'
 
-const DEFAULT_EVAL_PROMPT = `你是一名专业的答案评估专家。请将测试答案与参考答案进行对比，并提供以下内容：
-1. "matchScore": 语义相似度百分比（0-100），100表示完全一致
-2. "analysis": 简要分析（不超过150字），说明两个答案在哪些方面一致、哪些方面有差异，以及语气或措辞是否存在不当之处
+const DEFAULT_EVAL_PROMPT = `你是一名专业的答案评估专家。请将测试答案与参考答案进行对比，分两段简要描述：
 
-你必须且只能以合法的JSON格式回复，不要包含其他任何文字：
-{"matchScore": 85, "analysis": "..."}`
+第一段：给出语义匹配度评分（0-100分），并用一句话说明评分理由。
+第二段：简要分析（不超过150字）测试答案与参考答案的异同，包括内容准确性、语气措辞是否恰当等。
+
+直接用自然语言回复，不要使用JSON或其他格式。`
 
 interface Agent {
   id: number
@@ -92,7 +92,7 @@ export function TestPage() {
   const [evalResults, setEvalResults] = useState<any[]>([])
   const [showEvalDialog, setShowEvalDialog] = useState(false)
   const [evalComplete, setEvalComplete] = useState(false)
-  const [evalSummary, setEvalSummary] = useState<{ avgMatchScore: number; evaluatorName: string; evaluatedCount: number } | null>(null)
+  const [evalSummary, setEvalSummary] = useState<{ avgScore: number; evaluatorName: string; evaluatedCount: number } | null>(null)
 
   // Fetch agents
   const { data: agents = [], isLoading } = useQuery({
@@ -641,11 +641,10 @@ export function TestPage() {
               } else if (data.type === 'eval_complete') {
                 setEvalComplete(true)
                 setEvalSummary({
-                  avgMatchScore: data.avgMatchScore,
+                  avgScore: data.avgScore || 0,
                   evaluatorName: data.evaluatorName,
                   evaluatedCount: data.evaluatedCount,
                 })
-                // Merge eval results into liveResults
                 const evalMap = new Map<number, any>(data.evalResults.map((er: any) => [er.questionIndex, er]))
                 setLiveResults(prev => prev.map((r, idx) => {
                   const evalData = evalMap.get(idx)
@@ -653,21 +652,20 @@ export function TestPage() {
                     return {
                       ...r,
                       evaluation: {
-                        matchScore: evalData.matchScore,
-                        analysis: evalData.analysis,
+                        evalText: evalData.evalText,
+                        score: evalData.score,
                         evaluatorName: data.evaluatorName,
                       }
                     }
                   }
                   return r
                 }))
-                // Update pendingSaveData with evaluation info
                 setPendingSaveData((prev: any) => prev ? {
                   ...prev,
                   evaluation: {
                     evaluatorAgentId: evaluatorAgent.id,
                     evaluatorAgentName: data.evaluatorName,
-                    avgMatchScore: data.avgMatchScore,
+                    avgScore: data.avgScore || 0,
                     evaluatedCount: data.evaluatedCount,
                   },
                 } : prev)
@@ -1880,11 +1878,13 @@ export function TestPage() {
                         <div key={idx} className="text-sm p-2 bg-violet-50 rounded-lg">
                           <div className="flex items-center justify-between mb-1">
                             <span className="font-medium text-violet-700">Q{er.questionIndex + 1}</span>
-                            <span className={`font-bold ${er.matchScore >= 70 ? 'text-green-600' : er.matchScore >= 40 ? 'text-yellow-600' : 'text-red-600'}`}>
-                              {er.matchScore}%
-                            </span>
+                            {er.score > 0 && (
+                              <span className={`font-bold ${er.score >= 70 ? 'text-green-600' : er.score >= 40 ? 'text-yellow-600' : 'text-red-600'}`}>
+                                {er.score}分
+                              </span>
+                            )}
                           </div>
-                          <p className="text-xs text-text-tertiary truncate">{er.analysis}</p>
+                          <p className="text-xs text-text-tertiary line-clamp-2">{er.evalText}</p>
                         </div>
                       ))}
                     </div>
@@ -1914,12 +1914,14 @@ export function TestPage() {
                       <span className="text-text-secondary">已评估:</span>
                       <span className="font-medium">{evalSummary.evaluatedCount} 个问题</span>
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-text-secondary">平均匹配度:</span>
-                      <span className={`font-bold text-lg ${evalSummary.avgMatchScore >= 70 ? 'text-green-600' : evalSummary.avgMatchScore >= 40 ? 'text-yellow-600' : 'text-red-600'}`}>
-                        {evalSummary.avgMatchScore}%
-                      </span>
-                    </div>
+                    {evalSummary.avgScore > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-text-secondary">平均评分:</span>
+                        <span className={`font-bold text-lg ${evalSummary.avgScore >= 70 ? 'text-green-600' : evalSummary.avgScore >= 40 ? 'text-yellow-600' : 'text-red-600'}`}>
+                          {evalSummary.avgScore}分
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   <button

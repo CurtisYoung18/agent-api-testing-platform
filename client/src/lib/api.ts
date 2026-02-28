@@ -19,6 +19,7 @@ export interface Agent {
   region: 'SG' | 'TH' | 'CN' | 'CUSTOM';
   apiKey: string;
   customBaseUrl?: string;
+  isEvaluator?: boolean;
   status: string;
   lastUsed: string | null;
   createdAt: string;
@@ -31,6 +32,7 @@ export interface CreateAgentInput {
   region: 'SG' | 'TH' | 'CN' | 'CUSTOM';
   apiKey: string;
   customBaseUrl?: string;
+  isEvaluator?: boolean;
 }
 
 export interface UpdateAgentInput {
@@ -39,6 +41,7 @@ export interface UpdateAgentInput {
   region?: 'SG' | 'TH' | 'CN' | 'CUSTOM';
   apiKey?: string;
   customBaseUrl?: string;
+  isEvaluator?: boolean;
   status?: string;
 }
 

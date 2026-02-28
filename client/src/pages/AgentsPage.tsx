@@ -13,6 +13,7 @@ import {
   MapIcon,
   XMarkIcon,
   ExclamationTriangleIcon,
+  AcademicCapIcon,
 } from '@heroicons/react/24/outline'
 
 export function AgentsPage() {
@@ -27,6 +28,7 @@ export function AgentsPage() {
     region: 'SG',
     apiKey: '',
     customBaseUrl: '',
+    isEvaluator: false,
   })
   const [formError, setFormError] = useState('')
 
@@ -48,7 +50,7 @@ export function AgentsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agents'] })
       setIsCreateModalOpen(false)
-      setNewAgent({ name: '', modelName: '', region: 'SG', apiKey: '', customBaseUrl: '' })
+      setNewAgent({ name: '', modelName: '', region: 'SG', apiKey: '', customBaseUrl: '', isEvaluator: false })
       setFormError('')
     },
     onError: () => {
@@ -62,7 +64,7 @@ export function AgentsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agents'] })
       setEditingAgent(null)
-      setNewAgent({ name: '', modelName: '', region: 'SG', apiKey: '', customBaseUrl: '' })
+      setNewAgent({ name: '', modelName: '', region: 'SG', apiKey: '', customBaseUrl: '', isEvaluator: false })
       setFormError('')
     },
     onError: (err: any) => {
@@ -100,8 +102,9 @@ export function AgentsPage() {
       name: agent.name,
       modelName: agent.modelName || '',
       region: agent.region as 'SG' | 'TH' | 'CN' | 'CUSTOM',
-      apiKey: '', // 不显示完整的API Key
+      apiKey: '',
       customBaseUrl: agent.customBaseUrl || '',
+      isEvaluator: agent.isEvaluator || false,
     })
     setFormError('')
   }
@@ -124,6 +127,7 @@ export function AgentsPage() {
       modelName: newAgent.modelName,
       region: newAgent.region,
       customBaseUrl: newAgent.customBaseUrl,
+      isEvaluator: newAgent.isEvaluator,
     }
     
     // Only include apiKey if it's been changed (not empty)
@@ -142,6 +146,77 @@ export function AgentsPage() {
   const filteredAgents = agents?.filter((agent) =>
     agent.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     agent.region.toLowerCase().includes(searchQuery.toLowerCase())
+  )
+
+  const testAgents = filteredAgents?.filter(a => !a.isEvaluator) || []
+  const evaluatorAgents = filteredAgents?.filter(a => a.isEvaluator) || []
+
+  const renderAgentCard = (agent: Agent) => (
+    <motion.div
+      key={agent.id}
+      layout
+      initial={{ opacity: 0, scale: 0.95, y: 20 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.9, x: -100 }}
+      transition={{ duration: 0.3, layout: { duration: 0.3 } }}
+      className="glass-card p-6 hover:shadow-glass-hover transition-all duration-200"
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex-1">
+          <div className="flex items-center space-x-3 mb-2">
+            <h3 className="text-lg font-semibold text-text-primary">{agent.name}</h3>
+            <div className="flex items-center space-x-2 mt-2">
+              <span className="badge badge-primary flex items-center space-x-1">
+                {getRegionIcon(agent.region)}
+                <span>{agent.region}</span>
+              </span>
+              {agent.modelName && (
+                <span className="badge badge-secondary flex items-center space-x-1">
+                  <CpuChipIcon className="w-3 h-3" />
+                  <span>{agent.modelName}</span>
+                </span>
+              )}
+              {agent.region === 'CUSTOM' && agent.customBaseUrl && (
+                <span className="badge badge-secondary flex items-center space-x-1">
+                  <span>自定义: {agent.customBaseUrl}</span>
+                </span>
+              )}
+              {agent.isEvaluator && (
+                <span className="badge flex items-center space-x-1 bg-violet-500/10 text-violet-400 border-violet-500/20">
+                  <AcademicCapIcon className="w-3 h-3" />
+                  <span>评估模型</span>
+                </span>
+              )}
+              <span className="badge badge-success flex items-center space-x-1">
+                <CheckCircleIcon className="w-3 h-3" />
+                <span>活跃</span>
+              </span>
+            </div>
+          </div>
+          <p className="text-sm text-text-secondary">API Key: {agent.apiKey}</p>
+          <p className="text-xs text-text-tertiary mt-1">
+            最后使用: {agent.lastUsed ? new Date(agent.lastUsed).toLocaleString('zh-CN') : '从未使用'}
+          </p>
+        </div>
+        <div className="flex space-x-2">
+          <button 
+            onClick={() => handleEdit(agent)}
+            className="btn-outline py-1 px-3 text-sm flex items-center space-x-1"
+          >
+            <PencilIcon className="w-4 h-4" />
+            <span>编辑</span>
+          </button>
+          <button 
+            onClick={() => handleDelete(agent.id, agent.name)}
+            disabled={deleteMutation.isPending}
+            className="btn-secondary py-1 px-3 text-sm text-error flex items-center space-x-1 disabled:opacity-50 hover:bg-red-500/10 transition-colors"
+          >
+            <TrashIcon className="w-4 h-4" />
+            <span>删除</span>
+          </button>
+        </div>
+      </div>
+    </motion.div>
   )
 
   return (
@@ -174,101 +249,68 @@ export function AgentsPage() {
         </div>
       </div>
 
-      {/* Agent List */}
+      {/* Test Agent List */}
       <div className="space-y-4">
+        <div className="flex items-center space-x-2">
+          <CpuChipIcon className="w-5 h-5 text-primary-400" />
+          <h2 className="text-xl font-semibold text-text-primary">测试 Agent</h2>
+          <span className="text-sm text-text-tertiary">({testAgents.length})</span>
+        </div>
         {isLoading ? (
-          <div className="glass-card p-6 text-center text-text-secondary">
-            加载中...
-          </div>
-        ) : filteredAgents && filteredAgents.length > 0 ? (
+          <div className="glass-card p-6 text-center text-text-secondary">加载中...</div>
+        ) : testAgents.length > 0 ? (
           <AnimatePresence mode="popLayout">
-            {filteredAgents.map((agent) => (
-              <motion.div
-                key={agent.id}
-                layout
-                initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.9, x: -100 }}
-                transition={{ 
-                  duration: 0.3,
-                  layout: { duration: 0.3 }
-                }}
-                className="glass-card p-6 hover:shadow-glass-hover transition-all duration-200"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-3 mb-2">
-                      <h3 className="text-lg font-semibold text-text-primary">{agent.name}</h3>
-                      <div className="flex items-center space-x-2 mt-2">
-                        <span className="badge badge-primary flex items-center space-x-1">
-                          {getRegionIcon(agent.region)}
-                          <span>{agent.region}</span>
-                        </span>
-                        {agent.modelName && (
-                          <span className="badge badge-secondary flex items-center space-x-1">
-                            <CpuChipIcon className="w-3 h-3" />
-                            <span>{agent.modelName}</span>
-                          </span>
-                        )}
-                        {agent.region === 'CUSTOM' && agent.customBaseUrl && (
-                          <span className="badge badge-secondary flex items-center space-x-1">
-                            <span>自定义: {agent.customBaseUrl}</span>
-                          </span>
-                        )}
-                        <span className="badge badge-success flex items-center space-x-1">
-                          <CheckCircleIcon className="w-3 h-3" />
-                          <span>活跃</span>
-                        </span>
-                      </div>
-                    </div>
-                    <p className="text-sm text-text-secondary">API Key: {agent.apiKey}</p>
-                    <p className="text-xs text-text-tertiary mt-1">
-                      最后使用: {agent.lastUsed ? new Date(agent.lastUsed).toLocaleString('zh-CN') : '从未使用'}
-                    </p>
-                  </div>
-                  <div className="flex space-x-2">
-                    <button 
-                      onClick={() => handleEdit(agent)}
-                      className="btn-outline py-1 px-3 text-sm flex items-center space-x-1"
-                    >
-                      <PencilIcon className="w-4 h-4" />
-                      <span>编辑</span>
-                    </button>
-                    <button 
-                      onClick={() => handleDelete(agent.id, agent.name)}
-                      disabled={deleteMutation.isPending}
-                      className="btn-secondary py-1 px-3 text-sm text-error flex items-center space-x-1 disabled:opacity-50 hover:bg-red-500/10 transition-colors"
-                    >
-                      <TrashIcon className="w-4 h-4" />
-                      <span>删除</span>
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
+            {testAgents.map(renderAgentCard)}
           </AnimatePresence>
         ) : (
           <div className="glass-card p-12 text-center">
             <CpuChipIcon className="w-16 h-16 text-text-tertiary mx-auto mb-4" />
             <p className="text-text-secondary mb-4">
-              {searchQuery ? '未找到匹配的 agents' : '暂无 agents'}
+              {searchQuery ? '未找到匹配的测试 agent' : '暂无测试 agent'}
             </p>
             <button 
-              onClick={() => setIsCreateModalOpen(true)}
+              onClick={() => { setNewAgent(prev => ({ ...prev, isEvaluator: false })); setIsCreateModalOpen(true) }}
               className="btn-primary flex items-center space-x-2 mx-auto"
             >
               <PlusIcon className="w-5 h-5" />
-              <span>添加你的第一个 Agent</span>
+              <span>添加测试 Agent</span>
             </button>
           </div>
         )}
       </div>
 
-      {filteredAgents && filteredAgents.length > 0 && (
-        <p className="text-sm text-text-tertiary text-center">
-          {searchQuery ? `找到 ${filteredAgents.length} 个 agent` : `共 ${filteredAgents.length} 个 agent`}
-        </p>
-      )}
+      {/* Evaluator Model List */}
+      <div className="space-y-4">
+        <div className="flex items-center space-x-2">
+          <AcademicCapIcon className="w-5 h-5 text-violet-400" />
+          <h2 className="text-xl font-semibold text-text-primary">评估模型</h2>
+          <span className="text-sm text-text-tertiary">({evaluatorAgents.length})</span>
+        </div>
+        {isLoading ? (
+          <div className="glass-card p-6 text-center text-text-secondary">加载中...</div>
+        ) : evaluatorAgents.length > 0 ? (
+          <AnimatePresence mode="popLayout">
+            {evaluatorAgents.map(renderAgentCard)}
+          </AnimatePresence>
+        ) : (
+          <div className="glass-card p-8 text-center border border-dashed border-violet-500/20">
+            <AcademicCapIcon className="w-12 h-12 text-violet-400/50 mx-auto mb-3" />
+            <p className="text-text-secondary mb-3 text-sm">
+              {searchQuery ? '未找到匹配的评估模型' : '暂无评估模型'}
+            </p>
+            <p className="text-text-tertiary text-xs mb-4">
+              评估模型用于在测试完成后对结果进行 AI 分析评估
+            </p>
+            <button 
+              onClick={() => { setNewAgent(prev => ({ ...prev, isEvaluator: true })); setIsCreateModalOpen(true) }}
+              className="btn-outline text-sm py-1.5 px-4 flex items-center space-x-2 mx-auto border-violet-500/30 text-violet-400 hover:bg-violet-500/10"
+            >
+              <PlusIcon className="w-4 h-4" />
+              <span>添加评估模型</span>
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Delete Confirmation Modal */}
       <AnimatePresence>
@@ -332,7 +374,7 @@ export function AgentsPage() {
               if (!createMutation.isPending && !updateMutation.isPending) {
                 setIsCreateModalOpen(false)
                 setEditingAgent(null)
-                setNewAgent({ name: '', modelName: '', region: 'SG', apiKey: '', customBaseUrl: '' })
+                setNewAgent({ name: '', modelName: '', region: 'SG', apiKey: '', customBaseUrl: '', isEvaluator: false })
                 setFormError('')
               }
             }}
@@ -353,7 +395,7 @@ export function AgentsPage() {
                   onClick={() => {
                     setIsCreateModalOpen(false)
                     setEditingAgent(null)
-                    setNewAgent({ name: '', modelName: '', region: 'SG', apiKey: '', customBaseUrl: '' })
+                    setNewAgent({ name: '', modelName: '', region: 'SG', apiKey: '', customBaseUrl: '', isEvaluator: false })
                     setFormError('')
                   }}
                   className="text-text-tertiary hover:text-text-primary transition-colors"
@@ -450,6 +492,28 @@ export function AgentsPage() {
                   )}
                 </div>
 
+                <div className="flex items-center justify-between p-3 rounded-lg bg-violet-500/5 border border-violet-500/20">
+                  <div className="flex items-center space-x-2">
+                    <AcademicCapIcon className="w-5 h-5 text-violet-400" />
+                    <div>
+                      <p className="text-sm font-medium text-text-primary">评估模型</p>
+                      <p className="text-xs text-text-tertiary">标记为评估模型（用于 AI 分析测试结果）</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setNewAgent({ ...newAgent, isEvaluator: !newAgent.isEvaluator })}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      newAgent.isEvaluator ? 'bg-violet-500' : 'bg-gray-600'
+                    }`}
+                    disabled={createMutation.isPending || updateMutation.isPending}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      newAgent.isEvaluator ? 'translate-x-6' : 'translate-x-1'
+                    }`} />
+                  </button>
+                </div>
+
                 {formError && (
                   <motion.div
                     initial={{ opacity: 0, y: -10 }}
@@ -465,7 +529,7 @@ export function AgentsPage() {
                     onClick={() => {
                       setIsCreateModalOpen(false)
                       setEditingAgent(null)
-                      setNewAgent({ name: '', modelName: '', region: 'SG', apiKey: '', customBaseUrl: '' })
+                      setNewAgent({ name: '', modelName: '', region: 'SG', apiKey: '', customBaseUrl: '', isEvaluator: false })
                       setFormError('')
                     }}
                     className="btn-outline flex-1"

@@ -374,19 +374,25 @@ async function executeTests(
 
 // Generate Excel report
 function generateExcelReport(data: any): Buffer {
-  const rows = data.results.map((r: any, index: number) => ({
-    '序号': index + 1,
-    '问题': r.question,
-    '参考答案': r.referenceOutput || '',
-    '实际输出': r.response || r.error,
-    '状态': r.success ? '成功' : '失败',
-    '响应时间(ms)': r.responseTime,
-    'Token消耗': r.tokens || 0,
-    '积分': r.cost || 0,
-    '时间戳': r.timestamp,
-  }));
+  const rows = data.results.map((r: any, index: number) => {
+    const row: any = {
+      '序号': index + 1,
+      '问题': r.question,
+      '参考答案': r.referenceOutput || '',
+      '实际输出': r.response || r.error,
+      '状态': r.success ? '成功' : '失败',
+      '响应时间(ms)': r.responseTime,
+      'Token消耗': r.tokens || 0,
+      '积分': r.cost || 0,
+      '时间戳': r.timestamp,
+    };
+    if (r.evaluation) {
+      row['AI评估'] = r.evaluation.evalText || r.evaluation.analysis || '';
+    }
+    return row;
+  });
 
-  const summaryRow = {
+  const summaryRow: any = {
     '序号': '汇总',
     '问题': `Agent: ${data.agentName}`,
     '参考答案': `总问题数: ${data.totalQuestions}`,
@@ -397,6 +403,9 @@ function generateExcelReport(data: any): Buffer {
     '积分': data.totalCost.toFixed(4),
     '时间戳': data.testDate.toISOString(),
   };
+  if (data.evaluation) {
+    summaryRow['AI评估'] = `评估模型: ${data.evaluation.evaluatorAgentName}`;
+  }
 
   rows.unshift(summaryRow);
 
@@ -427,7 +436,12 @@ function generateMarkdownReport(data: any): string {
   markdown += `| Token消耗 | ${data.totalTokens} |\n`;
   markdown += `| 积分消耗 | ${data.totalCost.toFixed(4)} |\n`;
   markdown += `| 总成本(USD) | $${(data.totalCost / 100).toFixed(4)} |\n`;
-  markdown += `| *换算* | *100积分=1美元 (GPTBots)* |\n\n`;
+  markdown += `| *换算* | *100积分=1美元 (GPTBots)* |\n`;
+  if (data.evaluation) {
+    markdown += `| 评估模型 | ${data.evaluation.evaluatorAgentName} |\n`;
+    if (data.evaluation.avgScore) markdown += `| 平均评分 | ${data.evaluation.avgScore} |\n`;
+  }
+  markdown += `\n`;
 
   markdown += `## 详细结果\n\n`;
   data.results.forEach((r: any, index: number) => {
@@ -443,6 +457,9 @@ function generateMarkdownReport(data: any): string {
     }
     if (r.cost != null) {
       markdown += `**积分**: ${r.cost.toFixed(4)}\n\n`;
+    }
+    if (r.evaluation) {
+      markdown += `**AI评估**:\n\n${r.evaluation.evalText || r.evaluation.analysis || ''}\n\n`;
     }
     markdown += `---\n\n`;
   });

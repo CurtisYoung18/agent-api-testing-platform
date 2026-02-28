@@ -408,8 +408,8 @@ function generateMarkdownReport(data) {
     markdown += `| 重试成功数 | ${data.retriedCount} |\n`;
   }
   if (data.evaluation) {
-    markdown += `| 平均匹配度 | ${data.evaluation.avgMatchScore}% |\n`;
     markdown += `| 评估模型 | ${data.evaluation.evaluatorAgentName} |\n`;
+    if (data.evaluation.avgScore) markdown += `| 平均评分 | ${data.evaluation.avgScore} |\n`;
   }
   markdown += `\n`;
 
@@ -430,8 +430,7 @@ function generateMarkdownReport(data) {
       markdown += `**积分**: ${r.cost.toFixed(4)}\n\n`;
     }
     if (r.evaluation) {
-      markdown += `**AI评估**: ${r.evaluation.matchScore}% 匹配\n\n`;
-      markdown += `**分析**: ${r.evaluation.analysis}\n\n`;
+      markdown += `**AI评估**:\n\n${r.evaluation.evalText || r.evaluation.analysis || ''}\n\n`;
     }
     markdown += `---\n\n`;
   });
@@ -472,8 +471,8 @@ function generateMarkdownReportEn(data) {
     markdown += `| Retried & Passed | ${data.retriedCount} |\n`;
   }
   if (data.evaluation) {
-    markdown += `| Avg Match Score | ${data.evaluation.avgMatchScore}% |\n`;
     markdown += `| Evaluator | ${data.evaluation.evaluatorAgentName} |\n`;
+    if (data.evaluation.avgScore) markdown += `| Avg Score | ${data.evaluation.avgScore} |\n`;
   }
   markdown += `\n`;
 
@@ -494,8 +493,7 @@ function generateMarkdownReportEn(data) {
       markdown += `**Credits**: ${r.cost.toFixed(4)}\n\n`;
     }
     if (r.evaluation) {
-      markdown += `**Evaluation**: ${r.evaluation.matchScore}% match\n\n`;
-      markdown += `**Analysis**: ${r.evaluation.analysis}\n\n`;
+      markdown += `**AI Evaluation**:\n\n${r.evaluation.evalText || r.evaluation.analysis || ''}\n\n`;
     }
     markdown += `---\n\n`;
   });
@@ -519,8 +517,7 @@ function generateExcelReport(data) {
       '时间戳': r.timestamp || new Date().toISOString(),
     };
     if (r.evaluation) {
-      row['匹配度'] = `${r.evaluation.matchScore}%`;
-      row['AI分析'] = r.evaluation.analysis || '';
+      row['AI评估'] = r.evaluation.evalText || r.evaluation.analysis || '';
     }
     return row;
   });
@@ -537,8 +534,7 @@ function generateExcelReport(data) {
     '时间戳': data.testDate,
   };
   if (data.evaluation) {
-    summaryRow['匹配度'] = `平均: ${data.evaluation.avgMatchScore}%`;
-    summaryRow['AI分析'] = `评估模型: ${data.evaluation.evaluatorAgentName}`;
+    summaryRow['AI评估'] = `评估模型: ${data.evaluation.evaluatorAgentName}`;
   }
 
   rows.unshift(summaryRow);
@@ -568,7 +564,7 @@ function saveTestToHistory(testData) {
     totalCost: testData.totalCost || 0,
     testDate: testData.testDate,
     createdAt: new Date().toISOString(),
-    // Store results and reports
+    evaluation: testData.evaluation || undefined,
     results: testData.results,
     markdownReport: generateMarkdownReport(testData),
     markdownReportEn: generateMarkdownReportEn(testData),
@@ -1189,29 +1185,25 @@ app.post('/api/tests/retry', express.json({ limit: '50mb' }), async (req, res) =
 });
 
 // POST /api/tests/evaluate - AI evaluation of test results (SSE)
-const DEFAULT_EVAL_SYSTEM_PROMPT = `你是一名专业的答案评估专家。请将测试答案与参考答案进行对比，并提供以下内容：
-1. "matchScore": 语义相似度百分比（0-100），100表示完全一致
-2. "analysis": 简要分析（不超过150字），说明两个答案在哪些方面一致、哪些方面有差异，以及语气或措辞是否存在不当之处
+const DEFAULT_EVAL_SYSTEM_PROMPT = `你是一名专业的答案评估专家。请将测试答案与参考答案进行对比，分两段简要描述：
 
-你必须且只能以合法的JSON格式回复，不要包含其他任何文字：
-{"matchScore": 85, "analysis": "..."}`;
+第一段：给出语义匹配度评分（0-100分），并用一句话说明评分理由。
+第二段：简要分析（不超过150字）测试答案与参考答案的异同，包括内容准确性、语气措辞是否恰当等。
+
+直接用自然语言回复，不要使用JSON或其他格式。`;
 
 function buildEvalUserMessage(question, referenceAnswer, testAnswer) {
   return `测试问题: ${question}\n\n参考答案: ${referenceAnswer}\n\n测试答案: ${testAnswer}\n\n请对比测试答案与参考答案，给出评估结果。`;
 }
 
-function parseEvalResponse(text) {
-  try {
-    const jsonMatch = text.match(/\{[\s\S]*?"matchScore"[\s\S]*?"analysis"[\s\S]*?\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      return {
-        matchScore: Math.min(100, Math.max(0, Number(parsed.matchScore) || 0)),
-        analysis: String(parsed.analysis || '').slice(0, 200),
-      };
-    }
-  } catch (_) {}
-  return { matchScore: 0, analysis: 'Failed to parse evaluation response' };
+function extractScoreFromText(text) {
+  const m = text.match(/(\d{1,3})\s*[分\/]/);
+  if (m) return Math.min(100, Math.max(0, parseInt(m[1])));
+  const m2 = text.match(/匹配度[：:]\s*(\d{1,3})/);
+  if (m2) return Math.min(100, Math.max(0, parseInt(m2[1])));
+  const m3 = text.match(/(\d{1,3})%/);
+  if (m3) return Math.min(100, Math.max(0, parseInt(m3[1])));
+  return 0;
 }
 
 app.post('/api/tests/evaluate', express.json({ limit: '50mb' }), async (req, res) => {
@@ -1243,16 +1235,17 @@ app.post('/api/tests/evaluate', express.json({ limit: '50mb' }), async (req, res
       const referenceOutput = r.referenceOutput || '';
       const testAnswer = r.response || r.error || '';
       if (!referenceOutput || !testAnswer) {
-        return { questionIndex: idx, matchScore: 0, analysis: 'Missing reference or test answer' };
+        return { questionIndex: idx, evalText: '缺少参考答案或测试答案', score: 0 };
       }
       const evalPrompt = systemPrompt || DEFAULT_EVAL_SYSTEM_PROMPT;
       const prompt = `${evalPrompt}\n\n${buildEvalUserMessage(question, referenceOutput, testAnswer)}`;
       const apiResult = await callAgentAPI(agent.api_key, agent.region, prompt, agent.custom_base_url);
       if (!apiResult.success || !apiResult.response) {
-        return { questionIndex: idx, matchScore: 0, analysis: `Evaluation failed: ${apiResult.error || 'no response'}` };
+        return { questionIndex: idx, evalText: `评估失败: ${apiResult.error || '无响应'}`, score: 0 };
       }
-      const parsed = parseEvalResponse(apiResult.response);
-      return { questionIndex: idx, ...parsed };
+      const evalText = apiResult.response.trim();
+      const score = extractScoreFromText(evalText);
+      return { questionIndex: idx, evalText, score };
     };
 
     if (isParallel) {
@@ -1273,19 +1266,19 @@ app.post('/api/tests/evaluate', express.json({ limit: '50mb' }), async (req, res
       }
     }
 
-    const avgMatchScore = evalResults.length > 0
-      ? Math.round(evalResults.reduce((s, r) => s + (r.matchScore || 0), 0) / evalResults.length * 100) / 100
+    const avgScore = evalResults.length > 0
+      ? Math.round(evalResults.reduce((s, r) => s + (r.score || 0), 0) / evalResults.length)
       : 0;
     res.write(`data: ${JSON.stringify({
       type: 'eval_complete',
       evaluatorName: agent.name,
-      avgMatchScore,
+      avgScore,
       evaluatedCount: evalResults.length,
       evalResults,
     })}\n\n`);
     res.end();
 
-    console.log(`[evaluate] Completed: ${evalResults.length} questions, avg match: ${avgMatchScore}%`);
+    console.log(`[evaluate] Completed: ${evalResults.length} questions, avg score: ${avgScore}`);
   } catch (error) {
     console.error('[evaluate] Error:', error);
     if (!res.headersSent) {
@@ -1585,6 +1578,7 @@ app.get('/api/download', (req, res) => {
         totalTokens: history.totalTokens,
         totalCost: history.totalCost,
         results: history.results,
+        evaluation: history.evaluation,
       });
       res.send(mdEn);
       break;

@@ -33,6 +33,10 @@
       "destination": "/api/tests-actions?action=retry"
     },
     {
+      "source": "/api/tests/evaluate",
+      "destination": "/api/tests-actions?action=evaluate"
+    },
+    {
       "source": "/api/tests",
       "destination": "/api/tests"
     },

@@ -44,8 +44,8 @@ function generateMarkdownReport(data: any): string {
   markdown += `| 总成本(USD) | $${((data.totalCost || 0) / 100).toFixed(4)} |\n`;
   markdown += `| *换算* | *100积分=1美元 (GPTBots)* |\n`;
   if (data.evaluation) {
-    markdown += `| 平均匹配度 | ${data.evaluation.avgMatchScore}% |\n`;
     markdown += `| 评估模型 | ${data.evaluation.evaluatorAgentName} |\n`;
+    if (data.evaluation.avgScore) markdown += `| 平均评分 | ${data.evaluation.avgScore} |\n`;
   }
   markdown += `\n`;
   markdown += `## 详细结果\n\n`;
@@ -59,8 +59,7 @@ function generateMarkdownReport(data: any): string {
     if (r.tokens) markdown += `**Token消耗**: ${r.tokens}\n\n`;
     if (r.cost != null) markdown += `**积分**: ${r.cost.toFixed(4)}\n\n`;
     if (r.evaluation) {
-      markdown += `**AI评估**: ${r.evaluation.matchScore}% 匹配\n\n`;
-      markdown += `**分析**: ${r.evaluation.analysis}\n\n`;
+      markdown += `**AI评估**:\n\n${r.evaluation.evalText || r.evaluation.analysis || ''}\n\n`;
     }
     markdown += `---\n\n`;
   });
@@ -76,8 +75,7 @@ function generateExcelReport(data: any): Buffer {
       'Token消耗': r.tokens || 0, '积分': r.cost ?? 0, '时间戳': r.timestamp || new Date().toISOString(),
     };
     if (r.evaluation) {
-      row['匹配度'] = `${r.evaluation.matchScore}%`;
-      row['AI分析'] = r.evaluation.analysis || '';
+      row['AI评估'] = r.evaluation.evalText || r.evaluation.analysis || '';
     }
     return row;
   });
@@ -88,8 +86,7 @@ function generateExcelReport(data: any): Buffer {
     '积分': (data.totalCost || 0).toFixed(4), '时间戳': data.testDate,
   };
   if (data.evaluation) {
-    summaryRow['匹配度'] = `平均: ${data.evaluation.avgMatchScore}%`;
-    summaryRow['AI分析'] = `评估模型: ${data.evaluation.evaluatorAgentName}`;
+    summaryRow['AI评估'] = `评估模型: ${data.evaluation.evaluatorAgentName}`;
   }
   rows.unshift(summaryRow);
   const worksheet = XLSX.utils.json_to_sheet(rows);
@@ -218,12 +215,12 @@ async function handleRetry(req: VercelRequest, res: VercelResponse) {
 }
 
 // --- Evaluate logic ---
-const DEFAULT_EVAL_SYSTEM_PROMPT = `你是一名专业的答案评估专家。请将测试答案与参考答案进行对比，并提供以下内容：
-1. "matchScore": 语义相似度百分比（0-100），100表示完全一致
-2. "analysis": 简要分析（不超过150字），说明两个答案在哪些方面一致、哪些方面有差异，以及语气或措辞是否存在不当之处
+const DEFAULT_EVAL_SYSTEM_PROMPT = `你是一名专业的答案评估专家。请将测试答案与参考答案进行对比，分两段简要描述：
 
-你必须且只能以合法的JSON格式回复，不要包含其他任何文字：
-{"matchScore": 85, "analysis": "..."}`;
+第一段：给出语义匹配度评分（0-100分），并用一句话说明评分理由。
+第二段：简要分析（不超过150字）测试答案与参考答案的异同，包括内容准确性、语气措辞是否恰当等。
+
+直接用自然语言回复，不要使用JSON或其他格式。`;
 
 function buildEvalUserMessage(question: string, referenceAnswer: string, testAnswer: string): string {
   return `测试问题: ${question}
@@ -235,18 +232,14 @@ function buildEvalUserMessage(question: string, referenceAnswer: string, testAns
 请对比测试答案与参考答案，给出评估结果。`;
 }
 
-function parseEvalResponse(text: string): { matchScore: number; analysis: string } {
-  try {
-    const jsonMatch = text.match(/\{[\s\S]*?"matchScore"[\s\S]*?"analysis"[\s\S]*?\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      return {
-        matchScore: Math.min(100, Math.max(0, Number(parsed.matchScore) || 0)),
-        analysis: String(parsed.analysis || '').slice(0, 200),
-      };
-    }
-  } catch (_) {}
-  return { matchScore: 0, analysis: 'Failed to parse evaluation response' };
+function extractScoreFromText(text: string): number {
+  const m = text.match(/(\d{1,3})\s*[分\/]/);
+  if (m) return Math.min(100, Math.max(0, parseInt(m[1])));
+  const m2 = text.match(/匹配度[：:]\s*(\d{1,3})/);
+  if (m2) return Math.min(100, Math.max(0, parseInt(m2[1])));
+  const m3 = text.match(/(\d{1,3})%/);
+  if (m3) return Math.min(100, Math.max(0, parseInt(m3[1])));
+  return 0;
 }
 
 async function handleEvaluate(req: VercelRequest, res: VercelResponse) {
@@ -275,17 +268,18 @@ async function handleEvaluate(req: VercelRequest, res: VercelResponse) {
     const referenceOutput = r.referenceOutput || '';
     const testAnswer = r.response || r.error || '';
     if (!referenceOutput || !testAnswer) {
-      return { questionIndex: idx, matchScore: 0, analysis: 'Missing reference or test answer' };
+      return { questionIndex: idx, evalText: '缺少参考答案或测试答案', score: 0 };
     }
     const prompt = buildEvalUserMessage(question, referenceOutput, testAnswer);
     const evalPrompt = systemPrompt || DEFAULT_EVAL_SYSTEM_PROMPT;
     const fullPrompt = `${evalPrompt}\n\n${prompt}`;
     const apiResult = await callAgentAPI(agent.api_key, agent.region, fullPrompt, agent.custom_base_url);
     if (!apiResult.success || !apiResult.response) {
-      return { questionIndex: idx, matchScore: 0, analysis: `Evaluation failed: ${apiResult.error || 'no response'}` };
+      return { questionIndex: idx, evalText: `评估失败: ${apiResult.error || '无响应'}`, score: 0 };
     }
-    const parsed = parseEvalResponse(apiResult.response);
-    return { questionIndex: idx, ...parsed };
+    const evalText = apiResult.response.trim();
+    const score = extractScoreFromText(evalText);
+    return { questionIndex: idx, evalText, score };
   };
 
   if (isParallel) {
@@ -306,13 +300,13 @@ async function handleEvaluate(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  const avgMatchScore = evalResults.length > 0
-    ? Math.round(evalResults.reduce((s, r) => s + (r.matchScore || 0), 0) / evalResults.length * 100) / 100
+  const avgScore = evalResults.length > 0
+    ? Math.round(evalResults.reduce((s, r) => s + (r.score || 0), 0) / evalResults.length)
     : 0;
   res.write(`data: ${JSON.stringify({
     type: 'eval_complete',
     evaluatorName: agent.name,
-    avgMatchScore,
+    avgScore,
     evaluatedCount: evalResults.length,
     evalResults,
   })}\n\n`);

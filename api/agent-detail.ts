@@ -48,6 +48,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ? `${agent.api_key.slice(0, 10)}***${agent.api_key.slice(-4)}`
           : '***',
         customBaseUrl: agent.custom_base_url || undefined,
+        isEvaluator: agent.is_evaluator || false,
         status: agent.status,
         lastUsed: agent.last_used,
         createdAt: agent.created_at,
@@ -57,7 +58,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // PUT - Update agent
     if (req.method === 'PUT') {
-      const { name, modelName, region, apiKey, customBaseUrl, status } = req.body;
+      const { name, modelName, region, apiKey, customBaseUrl, status, isEvaluator } = req.body;
 
       console.log('Update agent request:', { agentId, name, modelName, region, status, hasCustomBaseUrl: !!customBaseUrl });
 
@@ -96,6 +97,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         updates.push(`status = $${paramIndex++}`);
         values.push(status);
       }
+      if (isEvaluator !== undefined) {
+        updates.push(`is_evaluator = $${paramIndex++}`);
+        values.push(!!isEvaluator);
+      }
 
       updates.push(`updated_at = NOW()`);
       values.push(agentId);
@@ -124,6 +129,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ? `${agent.api_key.slice(0, 10)}***${agent.api_key.slice(-4)}`
           : '***',
         customBaseUrl: agent.custom_base_url || undefined,
+        isEvaluator: agent.is_evaluator || false,
         status: agent.status,
         lastUsed: agent.last_used,
         createdAt: agent.created_at,

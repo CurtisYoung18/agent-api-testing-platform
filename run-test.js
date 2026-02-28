@@ -154,7 +154,12 @@ function generateMarkdownReport(data) {
   markdown += `| Token消耗 | ${data.totalTokens || 0} |\n`;
   markdown += `| 积分消耗 | ${(data.totalCost || 0).toFixed(4)} |\n`;
   markdown += `| 总成本(USD) | $${((data.totalCost || 0) / 100).toFixed(4)} |\n`;
-  markdown += `| *换算* | *100积分=1美元 (GPTBots)* |\n\n`;
+  markdown += `| *换算* | *100积分=1美元 (GPTBots)* |\n`;
+  if (data.evaluation) {
+    markdown += `| 评估模型 | ${data.evaluation.evaluatorAgentName} |\n`;
+    if (data.evaluation.avgScore) markdown += `| 平均评分 | ${data.evaluation.avgScore} |\n`;
+  }
+  markdown += `\n`;
 
   markdown += `## 详细结果\n\n`;
   data.results.forEach((r, index) => {
@@ -167,6 +172,9 @@ function generateMarkdownReport(data) {
     markdown += `**响应时间**: ${((r.responseTime || 0) / 1000).toFixed(2)}s\n\n`;
     if (r.tokens) markdown += `**Token消耗**: ${r.tokens}\n\n`;
     if (r.cost != null) markdown += `**积分**: ${r.cost.toFixed(4)}\n\n`;
+    if (r.evaluation) {
+      markdown += `**AI评估**:\n\n${r.evaluation.evalText || r.evaluation.analysis || ''}\n\n`;
+    }
     markdown += `---\n\n`;
   });
 
@@ -191,7 +199,12 @@ function generateMarkdownReportEn(data) {
   markdown += `| Token Usage | ${data.totalTokens || 0} |\n`;
   markdown += `| Credits | ${(data.totalCost || 0).toFixed(4)} |\n`;
   markdown += `| Total USD Cost | $${((data.totalCost || 0) / 100).toFixed(4)} |\n`;
-  markdown += `| *Conversion* | *100 credits = 1 USD (GPTBots)* |\n\n`;
+  markdown += `| *Conversion* | *100 credits = 1 USD (GPTBots)* |\n`;
+  if (data.evaluation) {
+    markdown += `| Evaluator | ${data.evaluation.evaluatorAgentName} |\n`;
+    if (data.evaluation.avgScore) markdown += `| Avg Score | ${data.evaluation.avgScore} |\n`;
+  }
+  markdown += `\n`;
 
   markdown += `## Detailed Results\n\n`;
   data.results.forEach((r, index) => {
@@ -204,6 +217,9 @@ function generateMarkdownReportEn(data) {
     markdown += `**Response Time**: ${((r.responseTime || 0) / 1000).toFixed(2)}s\n\n`;
     if (r.tokens) markdown += `**Token Usage**: ${r.tokens}\n\n`;
     if (r.cost != null) markdown += `**Credits**: ${r.cost.toFixed(4)}\n\n`;
+    if (r.evaluation) {
+      markdown += `**AI Evaluation**:\n\n${r.evaluation.evalText || r.evaluation.analysis || ''}\n\n`;
+    }
     markdown += `---\n\n`;
   });
 
@@ -211,16 +227,22 @@ function generateMarkdownReportEn(data) {
 }
 
 function generateExcelReport(data) {
-  const rows = data.results.map((r, index) => ({
-    '序号': index + 1,
-    '问题': r.question,
-    '参考答案': r.referenceOutput || '',
-    '实际输出': r.response || r.error,
-    '状态': r.success ? '成功' : '失败',
-    '响应时间(ms)': r.responseTime,
-    'Token消耗': r.tokens || 0,
-    '积分': r.cost != null ? r.cost.toFixed(4) : 0,
-  }));
+  const rows = data.results.map((r, index) => {
+    const row = {
+      '序号': index + 1,
+      '问题': r.question,
+      '参考答案': r.referenceOutput || '',
+      '实际输出': r.response || r.error,
+      '状态': r.success ? '成功' : '失败',
+      '响应时间(ms)': r.responseTime,
+      'Token消耗': r.tokens || 0,
+      '积分': r.cost != null ? r.cost.toFixed(4) : 0,
+    };
+    if (r.evaluation) {
+      row['AI评估'] = r.evaluation.evalText || r.evaluation.analysis || '';
+    }
+    return row;
+  });
 
   const summaryRow = {
     '序号': '汇总',
@@ -232,6 +254,9 @@ function generateExcelReport(data) {
     'Token消耗': data.totalTokens || 0,
     '积分': (data.totalCost || 0).toFixed(4),
   };
+  if (data.evaluation) {
+    summaryRow['AI评估'] = `评估模型: ${data.evaluation.evaluatorAgentName}`;
+  }
 
   rows.unshift(summaryRow);
 

@@ -18,7 +18,12 @@ function generateMarkdownReportEn(data: any): string {
   md += `| Token Usage | ${data.totalTokens || 0} |\n`;
   md += `| Credits | ${(data.totalCost || 0).toFixed(4)} |\n`;
   md += `| Total USD Cost | $${((data.totalCost || 0) / 100).toFixed(4)} |\n`;
-  md += `| *Conversion* | *100 credits = 1 USD (GPTBots)* |\n\n`;
+  md += `| *Conversion* | *100 credits = 1 USD (GPTBots)* |\n`;
+  if (data.evaluation) {
+    md += `| Evaluator | ${data.evaluation.evaluatorAgentName} |\n`;
+    if (data.evaluation.avgScore) md += `| Avg Score | ${data.evaluation.avgScore} |\n`;
+  }
+  md += `\n`;
   md += `## Detailed Results\n\n`;
   data.results.forEach((r: any, i: number) => {
     md += `### Question ${i + 1}\n\n`;
@@ -28,6 +33,9 @@ function generateMarkdownReportEn(data: any): string {
     md += `**Response Time**: ${fmtSec(r.responseTime || 0)}\n\n`;
     if (r.tokens) md += `**Token Usage**: ${r.tokens}\n\n`;
     if (r.cost != null) md += `**Credits**: ${r.cost.toFixed(4)}\n\n`;
+    if (r.evaluation) {
+      md += `**AI Evaluation**:\n\n${r.evaluation.evalText || r.evaluation.analysis || ''}\n\n`;
+    }
     md += `---\n\n`;
   });
   return md;
@@ -122,6 +130,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         totalTokens: jsonData.totalTokens || 0,
         totalCost: jsonData.totalCost || 0,
         results: jsonData.results,
+        evaluation: jsonData.evaluation || undefined,
       };
       const markdownEn = generateMarkdownReportEn(testData);
       res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
