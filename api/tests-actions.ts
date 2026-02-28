@@ -55,12 +55,12 @@ function generateMarkdownReport(data: any): string {
     markdown += `**问题**: ${r.question}\n\n`;
     if (r.referenceOutput) markdown += `**参考答案**: ${r.referenceOutput}\n\n`;
     markdown += `**实际输出**: ${r.response || r.error}\n\n`;
-    markdown += `**响应时间**: ${((r.responseTime || 0) / 1000).toFixed(2)}s\n\n`;
-    if (r.tokens) markdown += `**Token消耗**: ${r.tokens}\n\n`;
-    if (r.cost != null) markdown += `**积分**: ${r.cost.toFixed(4)}\n\n`;
     if (r.evaluation) {
       markdown += `**AI评估**:\n\n${r.evaluation.evalText || r.evaluation.analysis || ''}\n\n`;
     }
+    markdown += `**响应时间**: ${((r.responseTime || 0) / 1000).toFixed(2)}s\n\n`;
+    if (r.tokens) markdown += `**Token消耗**: ${r.tokens}\n\n`;
+    if (r.cost != null) markdown += `**积分**: ${r.cost.toFixed(4)}\n\n`;
     markdown += `---\n\n`;
   });
   return markdown;

@@ -30,12 +30,12 @@ function generateMarkdownReportEn(data: any): string {
     md += `**Question**: ${r.question}\n\n`;
     if (r.referenceOutput) md += `**Reference Answer**: ${r.referenceOutput}\n\n`;
     md += `**Actual Output**: ${r.response || r.error}\n\n`;
-    md += `**Response Time**: ${fmtSec(r.responseTime || 0)}\n\n`;
-    if (r.tokens) md += `**Token Usage**: ${r.tokens}\n\n`;
-    if (r.cost != null) md += `**Credits**: ${r.cost.toFixed(4)}\n\n`;
     if (r.evaluation) {
       md += `**AI Evaluation**:\n\n${r.evaluation.evalText || r.evaluation.analysis || ''}\n\n`;
     }
+    md += `**Response Time**: ${fmtSec(r.responseTime || 0)}\n\n`;
+    if (r.tokens) md += `**Token Usage**: ${r.tokens}\n\n`;
+    if (r.cost != null) md += `**Credits**: ${r.cost.toFixed(4)}\n\n`;
     md += `---\n\n`;
   });
   return md;
