@@ -519,6 +519,8 @@ export function TestPage() {
                   
                   if (remainingFailed > 0) {
                     setCurrentResponse(`⚠️ 重试完成，仍有 ${remainingFailed} 个问题失败。您可以继续重试或保存结果。`)
+                  } else if (enableEvaluation && evaluatorAgent && !evalComplete) {
+                    setCurrentResponse('✅ 所有问题已成功！正在准备 AI 评估...')
                   } else {
                     setCurrentResponse('✅ 所有问题已成功！点击下方按钮保存结果。')
                   }
@@ -1521,12 +1523,16 @@ export function TestPage() {
                                   </span>
                                 </button>
                                 <button
-                                  onClick={handleSaveAndNavigate}
-                                  disabled={isSaving || isRetrying}
-                                  className="flex items-center justify-center space-x-2 px-6 py-3 bg-gray-500 hover:bg-gray-600 text-white font-semibold rounded-lg transition-all disabled:opacity-50"
+                                  onClick={enableEvaluation && evaluatorAgent && !evalComplete ? handleStartEvaluation : handleSaveAndNavigate}
+                                  disabled={isSaving || isRetrying || isEvaluating}
+                                  className={`flex items-center justify-center space-x-2 px-6 py-3 ${enableEvaluation && evaluatorAgent && !evalComplete ? 'bg-violet-500 hover:bg-violet-600' : 'bg-gray-500 hover:bg-gray-600'} text-white font-semibold rounded-lg transition-all disabled:opacity-50`}
                                 >
-                                  <CheckCircleIcon className="w-5 h-5" />
-                                  <span>{isSaving ? '保存中...' : '跳过重试，查看结果'}</span>
+                                  {enableEvaluation && evaluatorAgent && !evalComplete ? (
+                                    <AcademicCapIcon className="w-5 h-5" />
+                                  ) : (
+                                    <CheckCircleIcon className="w-5 h-5" />
+                                  )}
+                                  <span>{isSaving ? '保存中...' : (enableEvaluation && evaluatorAgent && !evalComplete ? '跳过重试，开始评估' : '跳过重试，查看结果')}</span>
                                 </button>
                               </div>
                             </>
