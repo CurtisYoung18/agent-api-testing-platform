@@ -563,7 +563,7 @@ export function TestPage() {
         if (results.length > 0 && pendingSaveData?.testConfig) {
           const totalTokens = results.reduce((s, r) => s + (r.tokens || 0), 0)
           const totalCost = results.reduce((s, r) => s + (r.cost || 0), 0)
-          setPendingSaveData(prev => prev ? { ...prev, results } : prev)
+          setPendingSaveData((prev: any) => prev ? { ...prev, results } : prev)
           savePartialResultsToBackend(results, pendingSaveData.testConfig, retryAttemptsRef.current, pendingSaveData.durationSeconds ?? 0, totalTokens, totalCost)
             .then(historyId => historyId && navigate('/history', { state: { refresh: true } }))
             .catch(err => console.error('[retry-abort] Auto-save failed:', err))
