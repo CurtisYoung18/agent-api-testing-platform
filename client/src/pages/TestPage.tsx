@@ -70,6 +70,9 @@ export function TestPage() {
   // Abort test
   const abortControllerRef = useRef<AbortController | null>(null)
   const [isAborting, setIsAborting] = useState(false)
+  // Refs for latest results (used when auto-saving on abort - state may be stale)
+  const liveResultsRef = useRef<any[]>([])
+  const retryAttemptsRef = useRef<Map<number, number>>(new Map())
   // Custom concurrency input
   const [customConcurrency, setCustomConcurrency] = useState('')
   // Retry configuration (can be different from initial config)
@@ -199,6 +202,8 @@ export function TestPage() {
     setIsTestingLive(true)
     setTestCompleted(false)
     setLiveResults([])
+    liveResultsRef.current = []
+    retryAttemptsRef.current = new Map()
     setCurrentQuestion('')
     setCurrentResponse('')
     setLiveStats({ current: 0, total: 0, passedCount: 0, failedCount: 0, successRate: '0.00' })
@@ -276,6 +281,7 @@ export function TestPage() {
                 // Use functional update to access the latest state
                 setLiveResults(prevResults => {
                   const newResults = [...prevResults, data]
+                  liveResultsRef.current = newResults
                   const passedCount = newResults.filter(r => r.success).length
                   const failedCount = newResults.length - passedCount
                   const successRate = newResults.length > 0 ? ((passedCount / newResults.length) * 100).toFixed(2) : '0.00'
@@ -302,6 +308,7 @@ export function TestPage() {
                     totalCost: data.totalCost,
                   })
                   setLiveResults(data.results)
+                  liveResultsRef.current = data.results
                   setLiveStats(prev => ({
                     ...prev,
                     passedCount: data.passedCount,
@@ -352,12 +359,15 @@ export function TestPage() {
         setRetryRequestDelay(requestDelay)
         setRetryRequestTimeout(requestTimeout)
         setShowRetryConfig(false)
-        // Set pending save data so user can save partial results
+        // Set pending save data and auto-save partial results
         setLiveResults(prevResults => {
           if (prevResults.length > 0) {
+            liveResultsRef.current = prevResults
             const passedCount = prevResults.filter(r => r.success).length
             const failedCount = prevResults.length - passedCount
-            setPendingSaveData({
+            const totalTokens = prevResults.reduce((s, r) => s + (r.tokens || 0), 0)
+            const totalCost = prevResults.reduce((s, r) => s + (r.cost || 0), 0)
+            const saveData = {
               results: prevResults,
               testConfig: {
                 agentId: selectedAgent?.id,
@@ -367,15 +377,20 @@ export function TestPage() {
                 requestDelay,
               },
               durationSeconds: 0,
-              totalTokens: 0,
-              totalCost: 0,
-            })
+              totalTokens,
+              totalCost,
+            }
+            setPendingSaveData(saveData)
             setLiveStats(prev => ({
               ...prev,
               passedCount,
               failedCount,
               successRate: prevResults.length > 0 ? ((passedCount / prevResults.length) * 100).toFixed(2) : '0.00',
             }))
+            // Auto-save: run how many tests, save that many
+            savePartialResultsToBackend(prevResults, saveData.testConfig, retryAttemptsRef.current, 0, totalTokens, totalCost)
+              .then(historyId => historyId && navigate('/history', { state: { refresh: true } }))
+              .catch(err => console.error('[abort] Auto-save failed:', err))
           }
           return prevResults
         })
@@ -421,6 +436,9 @@ export function TestPage() {
     const modeText = retryExecutionMode === 'parallel' ? `并行(${retryMaxConcurrency}并发)` : `串行(间隔${retryRequestDelay/1000}秒)`
     setCurrentResponse(`正在以 ${modeText} 模式重试失败的问题...`)
 
+    const retryAbortController = new AbortController()
+    abortControllerRef.current = retryAbortController
+
     try {
       const response = await fetch('/api/tests/retry?stream=true', {
         method: 'POST',
@@ -436,6 +454,7 @@ export function TestPage() {
           requestDelay: retryRequestDelay,
           userId: customUserId.trim() || undefined,
         }),
+        signal: retryAbortController.signal,
       })
 
       if (!response.ok) {
@@ -474,9 +493,11 @@ export function TestPage() {
                   const existingIndex = newResults.findIndex(r => r.questionIndex === originalIndex)
                   
                   if (existingIndex !== -1) {
-                    // Track retry attempts
+                    // Track retry attempts (sync ref for abort auto-save)
                     const currentAttempts = retryAttempts.get(originalIndex) || 0
-                    setRetryAttempts(prev => new Map(prev).set(originalIndex, currentAttempts + 1))
+                    const nextAttempts = new Map(retryAttempts).set(originalIndex, currentAttempts + 1)
+                    retryAttemptsRef.current = nextAttempts
+                    setRetryAttempts(nextAttempts)
                     
                     // Update result with retry info
                     newResults[existingIndex] = {
@@ -484,6 +505,7 @@ export function TestPage() {
                       retryCount: currentAttempts + 1,
                     }
                   }
+                  liveResultsRef.current = newResults
                   
                   // Recalculate stats
                   const passedCount = newResults.filter(r => r.success).length
@@ -534,10 +556,66 @@ export function TestPage() {
         }
       }
     } catch (error: any) {
-      console.error('Retry execution error:', error)
-      setTestError(error.message || '重试执行失败')
+      if (error?.name === 'AbortError') {
+        setCurrentResponse('⏹️ 重试已中断')
+        setTestCompleted(true)
+        const results = liveResultsRef.current
+        if (results.length > 0 && pendingSaveData?.testConfig) {
+          const totalTokens = results.reduce((s, r) => s + (r.tokens || 0), 0)
+          const totalCost = results.reduce((s, r) => s + (r.cost || 0), 0)
+          setPendingSaveData(prev => prev ? { ...prev, results } : prev)
+          savePartialResultsToBackend(results, pendingSaveData.testConfig, retryAttemptsRef.current, pendingSaveData.durationSeconds ?? 0, totalTokens, totalCost)
+            .then(historyId => historyId && navigate('/history', { state: { refresh: true } }))
+            .catch(err => console.error('[retry-abort] Auto-save failed:', err))
+        }
+      } else {
+        console.error('Retry execution error:', error)
+        setTestError(error.message || '重试执行失败')
+      }
     } finally {
+      abortControllerRef.current = null
       setIsRetrying(false)
+      setIsAborting(false)
+    }
+  }
+
+  // Auto-save partial results to backend (used when test/retry is aborted - run how many, save how many)
+  const savePartialResultsToBackend = async (
+    results: any[],
+    testConfig: { agentId?: number; agentName?: string; executionMode?: string; maxConcurrency?: number; requestDelay?: number },
+    retryAttemptsMap: Map<number, number>,
+    durationSeconds: number,
+    totalTokens: number,
+    totalCost: number
+  ): Promise<number | null> => {
+    if (!results.length || !testConfig.agentId) return null
+    try {
+      const resultsWithRetryInfo = results.map(r => ({
+        ...r,
+        retryCount: retryAttemptsMap.get(r.questionIndex) ?? r.retryCount ?? 0,
+      }))
+      const res = await fetch('/api/tests/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          results: resultsWithRetryInfo,
+          testConfig: {
+            agentId: testConfig.agentId,
+            agentName: testConfig.agentName,
+            executionMode: testConfig.executionMode || 'parallel',
+            maxConcurrency: testConfig.maxConcurrency || 2,
+            requestDelay: testConfig.requestDelay || 0,
+          },
+          durationSeconds,
+          totalTokens,
+          totalCost,
+        }),
+      })
+      if (!res.ok) return null
+      const data = await res.json()
+      return data.historyId ?? null
+    } catch {
+      return null
     }
   }
 

@@ -16,8 +16,9 @@ app.use(express.json({ limit: '50mb' }));
 // File upload config
 const upload = multer({ dest: '/tmp/uploads/' });
 
-// Local data file path
+// Local data file paths
 const LOCAL_DATA_FILE = path.join(__dirname, 'local-data.json');
+const HISTORY_DATA_FILE = path.join(__dirname, 'history-data.json');
 
 // Load data from local-data.json
 function loadLocalData() {
@@ -53,6 +54,82 @@ function saveLocalData() {
     fs.writeFileSync(LOCAL_DATA_FILE, JSON.stringify(data, null, 2));
   } catch (err) {
     console.error('Failed to save local-data.json:', err.message);
+  }
+}
+
+// Load test history from history-data.json
+function loadHistoryData() {
+  try {
+    if (fs.existsSync(HISTORY_DATA_FILE)) {
+      const data = JSON.parse(fs.readFileSync(HISTORY_DATA_FILE, 'utf-8'));
+      const entries = (data.history || []).map((h) => {
+        const testData = {
+          agentName: h.agentName,
+          testDate: h.testDate,
+          executionMode: h.executionMode,
+          maxConcurrency: h.maxConcurrency,
+          requestDelay: h.requestDelay,
+          retriedCount: h.retriedCount,
+          totalQuestions: h.totalQuestions,
+          passedCount: h.passedCount,
+          failedCount: h.failedCount,
+          successRate: h.successRate,
+          avgResponseTime: h.avgResponseTime,
+          durationSeconds: h.durationSeconds,
+          totalTokens: h.totalTokens,
+          totalCost: h.totalCost,
+          results: h.results,
+          evaluation: h.evaluation,
+        };
+        return {
+          ...h,
+          markdownReport: generateMarkdownReport(testData),
+          markdownReportEn: generateMarkdownReportEn(testData),
+          excelReport: generateExcelReport(testData),
+        };
+      });
+      return {
+        history: entries,
+        nextId: data.nextId || (entries.length > 0 ? Math.max(...entries.map((e) => e.id)) + 1 : 1),
+      };
+    }
+  } catch (err) {
+    console.error('Failed to load history-data.json:', err.message);
+  }
+  return { history: [], nextId: 1 };
+}
+
+// Save test history to history-data.json
+function saveHistoryData() {
+  try {
+    const toSave = testHistory.map((h) => ({
+      id: h.id,
+      agentId: h.agentId,
+      agentName: h.agentName,
+      totalQuestions: h.totalQuestions,
+      passedCount: h.passedCount,
+      failedCount: h.failedCount,
+      successRate: h.successRate,
+      durationSeconds: h.durationSeconds,
+      avgResponseTime: h.avgResponseTime,
+      executionMode: h.executionMode,
+      rpm: h.rpm,
+      maxConcurrency: h.maxConcurrency,
+      requestDelay: h.requestDelay,
+      retriedCount: h.retriedCount,
+      totalTokens: h.totalTokens,
+      totalCost: h.totalCost,
+      testDate: h.testDate,
+      createdAt: h.createdAt,
+      evaluation: h.evaluation,
+      results: h.results,
+    }));
+    fs.writeFileSync(
+      HISTORY_DATA_FILE,
+      JSON.stringify({ history: toSave, nextId: historyIdCounter }, null, 2)
+    );
+  } catch (err) {
+    console.error('Failed to save history-data.json:', err.message);
   }
 }
 
@@ -245,21 +322,36 @@ app.post('/api/proxy', async (req, res) => {
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      
+      let proxyAborted = false;
+      req.on('close', () => {
+        proxyAborted = true;
+        reader.cancel().catch(() => {});
+        console.log('[proxy] Client disconnected, stopping stream');
+      });
+
       try {
         while (true) {
+          if (proxyAborted) break;
           const { done, value } = await reader.read();
           if (done) break;
-          
+          if (proxyAborted) break;
+
           const chunk = decoder.decode(value, { stream: true });
-          res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+          try {
+            res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+          } catch (writeErr) {
+            if (proxyAborted || writeErr.code === 'EPIPE') break;
+            throw writeErr;
+          }
         }
-        res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+        if (!proxyAborted) {
+          res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+        }
         res.end();
       } catch (streamError) {
+        if (proxyAborted) return;
         console.error('[proxy] Stream error:', streamError);
-        res.write(`data: ${JSON.stringify({ error: 'Stream error' })}\n\n`);
-        res.end();
+        try { res.write(`data: ${JSON.stringify({ error: 'Stream error' })}\n\n`); res.end(); } catch (_) {}
       }
       return;
     }
@@ -371,9 +463,7 @@ app.post('/api/custom-proxy', async (req, res) => {
 const testResults = new Map();
 let testIdCounter = 1;
 
-// Test history storage (模拟数据库)
-const testHistory = [];
-let historyIdCounter = 1;
+// Test history - initialized from file after generate* functions (see below)
 
 // Generate Markdown report
 function generateMarkdownReport(data) {
@@ -546,6 +636,14 @@ function generateExcelReport(data) {
   return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 }
 
+// Test history storage - load from history-data.json on startup (must be after generate* functions)
+const historyData = loadHistoryData();
+const testHistory = historyData.history;
+let historyIdCounter = historyData.nextId;
+if (testHistory.length > 0) {
+  console.log(`[history] Loaded ${testHistory.length} records from history-data.json`);
+}
+
 // Save test to history
 function saveTestToHistory(testData) {
   const historyEntry = {
@@ -572,6 +670,7 @@ function saveTestToHistory(testData) {
   };
   
   testHistory.unshift(historyEntry); // Add to beginning
+  saveHistoryData();
   console.log(`[history] Saved test #${historyEntry.id} to history`);
   return historyEntry;
 }
@@ -598,29 +697,39 @@ function parseExcelFile(filePath) {
   return { questions, referenceOutputs };
 }
 
-// Helper: Create fetch with timeout
-async function fetchWithTimeout(url, options, timeoutMs = 60000) {
+// Helper: Create fetch with timeout and optional external abort signal (for user cancel)
+async function fetchWithTimeout(url, options, timeoutMs = 60000, externalAbortSignal = null) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  
+  const onExternalAbort = () => {
+    clearTimeout(timeoutId);
+    controller.abort();
+  };
+  if (externalAbortSignal) {
+    externalAbortSignal.addEventListener('abort', onExternalAbort);
+  }
   try {
     const response = await fetch(url, {
       ...options,
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
+    if (externalAbortSignal) externalAbortSignal.removeEventListener('abort', onExternalAbort);
     return response;
   } catch (error) {
     clearTimeout(timeoutId);
+    if (externalAbortSignal) externalAbortSignal.removeEventListener('abort', onExternalAbort);
     if (error.name === 'AbortError') {
-      throw new Error(`请求超时 (${timeoutMs / 1000}秒)`);
+      // Distinguish timeout vs user abort (external signal aborted)
+      const isUserAbort = externalAbortSignal && externalAbortSignal.aborted;
+      throw isUserAbort ? error : new Error(`请求超时 (${timeoutMs / 1000}秒)`);
     }
     throw error;
   }
 }
 
-// Helper: Call Agent API
-async function callAgentAPI(apiKey, region, question, customBaseUrl, customUserId, timeoutMs = 60000) {
+// Helper: Call Agent API (abortSignal: optional, for immediate cancel when client disconnects)
+async function callAgentAPI(apiKey, region, question, customBaseUrl, customUserId, timeoutMs = 60000, abortSignal = null) {
   const startTime = Date.now();
   
   try {
@@ -637,7 +746,7 @@ async function callAgentAPI(apiKey, region, question, customBaseUrl, customUserI
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({ user_id: userId }),
-    }, 10000);
+    }, 10000, abortSignal);
 
     if (!conversationResponse.ok) {
       const errorData = await conversationResponse.json().catch(() => ({}));
@@ -663,7 +772,7 @@ async function callAgentAPI(apiKey, region, question, customBaseUrl, customUserI
         response_mode: 'blocking',
         messages: [{ role: 'user', content: [{ type: 'text', text: question }] }],
       }),
-    }, timeoutMs);
+    }, timeoutMs, abortSignal);
 
     const responseTime = Date.now() - startTime;
 
@@ -761,9 +870,16 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
       let totalTokens = 0;
       let totalCost = 0;
       let completedCount = 0;
+      let aborted = false;
+      const testAbortController = new AbortController();
+      req.on('close', () => {
+        aborted = true;
+        testAbortController.abort();
+        console.log('[tests] Client disconnected, stopping test');
+      });
 
-      // Helper function to process a single question
-      const processQuestion = async (i) => {
+      // Helper function to process a single question (abortSignal: cancel in-flight AI requests when user aborts)
+      const processQuestion = async (i, abortSignal) => {
         const question = questions[i];
         const refOutput = referenceOutputs[i] || '';
 
@@ -775,7 +891,8 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
           question,
           agent.custom_base_url,
           userId,
-          timeoutMs
+          timeoutMs,
+          abortSignal
         );
 
         // Extract token/cost info
@@ -814,6 +931,7 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
 
         // Process in batches with concurrency control
         for (let batchStart = 0; batchStart < questions.length; batchStart += concurrency) {
+          if (aborted) break;
           const batchEnd = Math.min(batchStart + concurrency, questions.length);
           const batchIndices = [];
           for (let i = batchStart; i < batchEnd; i++) {
@@ -828,8 +946,14 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
             message: `并行执行 ${batchIndices.length} 个请求...`
           })}\n\n`);
 
-          // Execute batch in parallel
-          const batchResults = await Promise.all(batchIndices.map(i => processQuestion(i)));
+          // Execute batch in parallel (pass abort signal so we can cancel in-flight requests)
+          let batchResults;
+          try {
+            batchResults = await Promise.all(batchIndices.map(i => processQuestion(i, testAbortController.signal)));
+          } catch (err) {
+            if (err.name === 'AbortError' || aborted) break;
+            throw err;
+          }
 
           // Process and send results
           for (const resultData of batchResults) {
@@ -843,7 +967,7 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
           }
 
           // Rate limiting between batches (wait 1 second to respect RPM)
-          if (batchEnd < questions.length) {
+          if (batchEnd < questions.length && !aborted) {
             await new Promise(resolve => setTimeout(resolve, 1000));
           }
         }
@@ -853,6 +977,7 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
         console.log(`[tests] Sequential mode: delay=${delay}ms`);
 
         for (let i = 0; i < questions.length; i++) {
+          if (aborted) break;
           // Send progress event
           res.write(`data: ${JSON.stringify({ 
             type: 'progress', 
@@ -860,7 +985,13 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
             question: questions[i].slice(0, 100) 
           })}\n\n`);
 
-          const resultData = await processQuestion(i);
+          let resultData;
+          try {
+            resultData = await processQuestion(i, testAbortController.signal);
+          } catch (err) {
+            if (err.name === 'AbortError' || aborted) break;
+            throw err;
+          }
 
           results.push(resultData);
           totalTokens += resultData.tokens || 0;
@@ -876,12 +1007,18 @@ app.post('/api/tests', upload.single('file'), async (req, res) => {
         }
       }
 
-      // Calculate summary
+      // If client disconnected, stop here (don't send - connection is closed)
+      if (aborted) {
+        console.log(`[tests] Aborted: ${results.length}/${questions.length} completed, stopping`);
+        return;
+      }
+
+      // Calculate summary (guard against empty results to avoid NaN)
       const passedCount = results.filter(r => r.success).length;
       const failedCount = results.length - passedCount;
       const durationSeconds = Math.floor((Date.now() - startTime) / 1000);
-      const avgResponseTime = Math.round(results.reduce((sum, r) => sum + (r.responseTime || 0), 0) / results.length);
-      const successRate = (passedCount / results.length * 100).toFixed(2);
+      const avgResponseTime = results.length > 0 ? Math.round(results.reduce((sum, r) => sum + (r.responseTime || 0), 0) / results.length) : 0;
+      const successRate = results.length > 0 ? (passedCount / results.length * 100).toFixed(2) : '0.00';
 
       const wantEval = req.body?.enableEvaluation === true || req.body?.enableEvaluation === 'true';
 
@@ -1000,8 +1137,8 @@ app.post('/api/tests/save', express.json({ limit: '50mb' }), async (req, res) =>
 
     const passedCount = results.filter(r => r.success).length;
     const failedCount = results.length - passedCount;
-    const avgResponseTime = Math.round(results.reduce((sum, r) => sum + (r.responseTime || 0), 0) / results.length);
-    const successRate = (passedCount / results.length * 100).toFixed(2);
+    const avgResponseTime = results.length > 0 ? Math.round(results.reduce((sum, r) => sum + (r.responseTime || 0), 0) / results.length) : 0;
+    const successRate = results.length > 0 ? (passedCount / results.length * 100).toFixed(2) : '0.00';
 
     const retriedCount = results.filter(r => r.retryCount && r.retryCount > 0).length;
 
@@ -1093,11 +1230,31 @@ app.post('/api/tests/retry', express.json({ limit: '50mb' }), async (req, res) =
 
     res.write(`data: ${JSON.stringify({ type: 'connected', totalQuestions: questions.length })}\n\n`);
 
+    let aborted = false;
+    const retryAbortController = new AbortController();
+    req.on('close', () => {
+      aborted = true;
+      retryAbortController.abort();
+      console.log('[retry] Client disconnected, stopping');
+    });
+
+    const safeWrite = (data) => {
+      if (aborted) return false;
+      try {
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+        return true;
+      } catch (e) {
+        if (e.code === 'EPIPE' || e.code === 'ECONNRESET') aborted = true;
+        else console.error('[retry] Write error:', e);
+        return false;
+      }
+    };
+
     const isParallel = executionMode === 'parallel';
     const results = [];
 
-    // Helper function to process a single question
-    const processQuestion = async (q) => {
+    // Helper function to process a single question (abortSignal for immediate cancel on user abort)
+    const processQuestion = async (q, abortSignal) => {
       console.log(`[retry] Running question ${q.questionIndex + 1}: ${q.question.slice(0, 50)}...`);
 
       const result = await callAgentAPI(
@@ -1106,7 +1263,8 @@ app.post('/api/tests/retry', express.json({ limit: '50mb' }), async (req, res) =
         q.question,
         agent.custom_base_url,
         userId,
-        timeoutMs
+        timeoutMs,
+        abortSignal
       );
 
       return {
@@ -1130,22 +1288,26 @@ app.post('/api/tests/retry', express.json({ limit: '50mb' }), async (req, res) =
       console.log(`[retry] Parallel mode: concurrency=${concurrency}`);
 
       for (let batchStart = 0; batchStart < questions.length; batchStart += concurrency) {
+        if (aborted) break;
         const batch = questions.slice(batchStart, batchStart + concurrency);
 
-        res.write(`data: ${JSON.stringify({ 
-          type: 'progress', 
-          current: batchStart + 1,
-          message: `重试 ${batch.length} 个问题...`
-        })}\n\n`);
+        if (!safeWrite({ type: 'progress', current: batchStart + 1, message: `重试 ${batch.length} 个问题...` })) break;
 
-        const batchResults = await Promise.all(batch.map(q => processQuestion(q)));
+        let batchResults;
+        try {
+          batchResults = await Promise.all(batch.map(q => processQuestion(q, retryAbortController.signal)));
+        } catch (err) {
+          if (err.name === 'AbortError' || aborted) break;
+          throw err;
+        }
 
         for (const resultData of batchResults) {
           results.push(resultData);
-          res.write(`data: ${JSON.stringify(resultData)}\n\n`);
+          if (!safeWrite(resultData)) break;
         }
+        if (aborted) break;
 
-        if (batchStart + concurrency < questions.length) {
+        if (batchStart + concurrency < questions.length && !aborted) {
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
       }
@@ -1154,15 +1316,18 @@ app.post('/api/tests/retry', express.json({ limit: '50mb' }), async (req, res) =
       console.log(`[retry] Sequential mode: delay=${delay}ms`);
 
       for (let i = 0; i < questions.length; i++) {
-        res.write(`data: ${JSON.stringify({ 
-          type: 'progress', 
-          current: i + 1, 
-          question: questions[i].question.slice(0, 100) 
-        })}\n\n`);
+        if (aborted) break;
+        if (!safeWrite({ type: 'progress', current: i + 1, question: questions[i].question.slice(0, 100) })) break;
 
-        const resultData = await processQuestion(questions[i]);
+        let resultData;
+        try {
+          resultData = await processQuestion(questions[i], retryAbortController.signal);
+        } catch (err) {
+          if (err.name === 'AbortError' || aborted) break;
+          throw err;
+        }
         results.push(resultData);
-        res.write(`data: ${JSON.stringify(resultData)}\n\n`);
+        if (!safeWrite(resultData)) break;
 
         if (i < questions.length - 1 && delay > 0) {
           await new Promise(resolve => setTimeout(resolve, delay));
@@ -1170,9 +1335,19 @@ app.post('/api/tests/retry', express.json({ limit: '50mb' }), async (req, res) =
       }
     }
 
+    if (aborted) {
+      console.log(`[retry] Aborted: ${results.length}/${questions.length} completed`);
+      try { res.end(); } catch (_) {}
+      return;
+    }
+
     // Send complete event
-    res.write(`data: ${JSON.stringify({ type: 'complete', retriedCount: results.length })}\n\n`);
-    res.end();
+    try {
+      res.write(`data: ${JSON.stringify({ type: 'complete', retriedCount: results.length })}\n\n`);
+      res.end();
+    } catch (e) {
+      if (e.code !== 'EPIPE' && e.code !== 'ECONNRESET') console.error('[retry] Write error:', e);
+    }
 
     console.log(`[retry] Completed with ${results.length} results`);
   } catch (error) {
@@ -1227,6 +1402,12 @@ app.post('/api/tests/evaluate', express.json({ limit: '50mb' }), async (req, res
     res.setHeader('X-Accel-Buffering', 'no');
     res.write(`data: ${JSON.stringify({ type: 'eval_connected', totalQuestions: results.length })}\n\n`);
 
+    let aborted = false;
+    req.on('close', () => {
+      aborted = true;
+      console.log('[evaluate] Client disconnected, stopping');
+    });
+
     const isParallel = executionMode === 'parallel';
     const concurrency = parseInt(maxConcurrency) || 2;
     const delay = parseInt(requestDelay) || 0;
@@ -1256,23 +1437,30 @@ app.post('/api/tests/evaluate', express.json({ limit: '50mb' }), async (req, res
 
     if (isParallel) {
       for (let i = 0; i < results.length; i += concurrency) {
+        if (aborted) break;
         const batch = results.slice(i, i + concurrency);
         res.write(`data: ${JSON.stringify({ type: 'eval_progress', current: evalResults.length + 1, total: totalToEval })}\n\n`);
         const batchResults = await Promise.all(batch.map((r, bIdx) => evaluateOne(r, i + bIdx)));
         for (const er of batchResults) {
           if (er) { evalResults.push(er); res.write(`data: ${JSON.stringify({ type: 'eval_result', ...er })}\n\n`); }
         }
-        if (i + concurrency < results.length) await new Promise(r => setTimeout(r, 1000));
+        if (i + concurrency < results.length && !aborted) await new Promise(r => setTimeout(r, 1000));
       }
     } else {
       for (let i = 0; i < results.length; i++) {
+        if (aborted) break;
         const er = await evaluateOne(results[i], i);
         if (!er) continue;
         res.write(`data: ${JSON.stringify({ type: 'eval_progress', current: evalResults.length + 1, total: totalToEval, question: results[i].question?.slice(0, 60) })}\n\n`);
         evalResults.push(er);
         res.write(`data: ${JSON.stringify({ type: 'eval_result', ...er })}\n\n`);
-        if (i < results.length - 1 && delay > 0) await new Promise(r => setTimeout(r, delay));
+        if (i < results.length - 1 && delay > 0 && !aborted) await new Promise(r => setTimeout(r, delay));
       }
+    }
+
+    if (aborted) {
+      console.log(`[evaluate] Aborted: ${evalResults.length}/${totalToEval} evaluated, stopping`);
+      return;
     }
 
     const avgScore = evalResults.length > 0
@@ -1547,6 +1735,7 @@ app.delete('/api/history/:id', (req, res) => {
   }
 
   testHistory.splice(index, 1);
+  saveHistoryData();
   res.status(204).send();
 });
 

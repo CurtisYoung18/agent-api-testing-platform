@@ -23,4 +23,7 @@ npm run dev
 
 ### 本地数据
 
-本地运行时，Agent 配置与测试历史保存在项目根目录的 `local-data.json` 中，无需配置数据库。
+本地运行时无需配置数据库，数据保存在项目根目录：
+
+- `local-data.json`：Agent 配置
+- `history-data.json`：测试历史记录（重启后保留）

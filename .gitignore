@@ -45,8 +45,9 @@ test_output/
 test_sample/*.xlsx
 test_sample/*.xls
 
-# Local data (contains API keys)
+# Local data (contains API keys, test history)
 local-data.json
+history-data.json
 
 # Logs
 *.log

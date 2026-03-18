@@ -357,7 +357,9 @@ async function executeTests(
 
   const totalDuration = Date.now() - startTime;
   const successRate = (passedCount / questions.length) * 100;
-  const avgResponseTime = Math.round(results.reduce((sum, r) => sum + r.responseTime, 0) / results.length);
+  const avgResponseTime = results.length > 0
+    ? Math.round(results.reduce((sum, r) => sum + (r.responseTime || 0), 0) / results.length)
+    : 0;
 
   return {
     results,
